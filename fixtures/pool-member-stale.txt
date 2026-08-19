@@ -1,0 +1,19 @@
+
+╭─ cheryl.dawson · Max 5x ─────────────────────────────────────────────────────╮
+│  ○ ● on   offline                                                            │
+│            in       out      cache r    cache w    req                       │
+│  own       153.4k   1.6M     981.5M     18.7M      1962  my token → me       │
+│  borrowed  1.6M     3.9M     1705.1M    29.7M      4390  from pool           │
+│  shared    1.3M     1.6M     586.1M     14.1M      2350  to pool             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  net give/take  −1137.3M  ↓ taker                                            │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  USAGE SPLIT  · headroom stale                                               │
+│  last 5h   0% used                                                           │
+│    no attributed traffic this window                                         │
+│                                                                              │
+│  week  63% used  · resets Aug 3 11:30am                                      │
+│    no attributed traffic this window                                         │
+│  shares are of observed proxy tokens, approximate                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

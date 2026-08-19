@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>claudex-dash</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<!-- Shipped `open` so it is already painting when the parser gets here: /app.js is a module and
+     therefore deferred, so a gate raised from script could only cover the empty panels AFTER they
+     had had a frame to show.
+
+     Deliberately NOT modal. A markup-open dialog is non-modal — no top layer, no ::backdrop, no
+     inertness, and a UA `position: absolute` that would scroll away with the page. Each of those is
+     either wanted or answered here: `inert` below supplies the inertness, styles.css pins it fixed
+     and paints it opaque, and non-modal means Esc does nothing to it, which is the requirement.
+     Making it modal instead would mean close()+showModal() (showModal() on an already-open dialog
+     throws) plus a cancel handler that browsers are allowed to overrule anyway. -->
+<dialog id="gate" open aria-labelledby="gate-title">
+  <h2 id="gate-title">claudex-dash</h2>
+  <div class="body"><p class="note">reading claudex…</p></div>
+</dialog>
+<!-- inert until the first successful load: not focusable, not clickable, hidden from assistive
+     tech. app.js lifts it in one place, next to gate.close(). -->
+<header id="hdr" inert>
+  <h1>claudex-dash</h1>
+  <nav class="tabs" role="tablist" aria-label="claudex-dash panels">
+    <button role="tab" id="tab-usage"    aria-controls="usage"    aria-selected="true">Usage<span class="count"></span></button>
+    <button role="tab" id="tab-pool"     aria-controls="pool"     aria-selected="false"
+            title="Pool members">Pool<span class="count"></span></button>
+    <button role="tab" id="tab-accounts" aria-controls="accounts" aria-selected="false">Accounts<span class="count"></span></button>
+    <button role="tab" id="tab-status"   aria-controls="status"   aria-selected="false"
+            aria-label="Pool status &amp; health" title="Pool status &amp; health">Health</button>
+  </nav>
+  <!-- Outside every <section>, so render()'s innerHTML never destroys it and the listeners can be
+       bound once. Options are built from SORTS in app.js so the menu cannot drift from the
+       comparators behind it. -->
+  <div class="ctl" id="ctl">
+    <label><input type="checkbox" id="only5x" /> 5x only</label>
+    <select id="sort" aria-label="Sort accounts"></select>
+  </div>
+  <!-- Before #refresh on purpose: #refresh owns this row's margin-left:auto (styles.css) and a
+       second auto margin would split the slack between them. Hidden until app.js finds a target. -->
+  <button id="mine" hidden>Switch to mine</button>
+  <button id="refresh">↻ Refresh</button>
+  <span class="age" id="age"></span>
+</header>
+<main id="app" inert>
+  <section id="usage"    role="tabpanel" aria-labelledby="tab-usage"><div class="body"></div></section>
+  <section id="pool"     role="tabpanel" aria-labelledby="tab-pool" hidden><div class="body"></div></section>
+  <section id="accounts" role="tabpanel" aria-labelledby="tab-accounts" hidden><div class="body"></div></section>
+  <section id="status"   role="tabpanel" aria-labelledby="tab-status" hidden><div class="body"></div></section>
+</main>
+<!-- Native <dialog>: Esc, focus trap, backdrop and background inertness come free, and the close
+     button needs no JS at all because a <form method="dialog"> submit closes its own dialog. -->
+<dialog id="detail" aria-labelledby="detail-name">
+  <header class="dlg-h">
+    <span class="name" id="detail-name"></span>
+    <span class="plan"></span>
+    <form method="dialog"><button class="close" aria-label="Close">&#10005;</button></form>
+  </header>
+  <div class="body"></div>
+  <footer class="dlg-f"><button id="detail-raw" aria-pressed="false">show raw</button></footer>
+</dialog>
+<!-- Both writes ask first. Outside <main> on purpose: inside, these buttons would bubble into the
+     write handler bound there. closest("button.switch") returns null for them today, but that is a
+     landmine for whoever next adds a class.
+
+     Enter confirms with no key handler, from four native behaviours in sequence:
+       1. showModal() focuses the first `autofocus` descendant. Without it engines focus the dialog
+          element itself and Enter does nothing — so autofocus is load-bearing, and unlike page-load
+          autofocus it is re-read on every showModal().
+       2. Enter on a focused button activates THAT button. This is focused-button activation, not
+          implicit form submission (which would pick Cancel, the first submit button) — implicit
+          submission only applies from a text field, and there is none here. So DOM order stays
+          Cancel-then-Confirm, matching visual and tab order.
+       3. method="dialog" closes the dialog and sets returnValue to the SUBMITTER's value.
+       4. Esc closes too, leaving returnValue alone — see the reset in app.js's ask(). -->
+<dialog id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+  <h2 id="confirm-title"></h2>
+  <p id="confirm-body"></p>
+  <form method="dialog">
+    <button value="">Cancel</button>
+    <button value="go" id="confirm-go" class="bad" autofocus></button>
+  </form>
+</dialog>
+<!-- popover, not a plain div: a popover enters the top layer, so a toast raised while the pool
+     detail <dialog> is open still renders above its backdrop. aria-live keeps the announcement the
+     old .msg elements got from role="status". -->
+<div id="toasts" popover="manual" aria-live="polite"></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+# Real captured CLI output — coworkers' email addresses, names and usage figures.
+# The sanitized copies in fixtures/ are what the tests actually run against and what ships;
+# this directory is the original capture and must never leave this machine.
+fixtures.local/
+
+node_modules/
+bun.lock
+.DS_Store

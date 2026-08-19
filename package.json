@@ -1,0 +1,9 @@
+{
+  "name": "claudex-dash",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "bun run server.ts",
+    "test": "bun test"
+  }
+}

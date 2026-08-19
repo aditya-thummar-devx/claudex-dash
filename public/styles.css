@@ -1,0 +1,357 @@
+/* Colour tokens + dark mode lifted from claude-session-manager/public/styles.css — light/dark is
+   already solved there, no reason to redo it. */
+:root {
+  --bg: #f5f5f4;
+  --panel: #ffffff;
+  --ink: #151515;
+  --dim: #6b6b6b;
+  --line: #e2e2e0;
+  --accent: #D97757;      /* Claude orange */
+  --accent-soft: #f7e6de; /* tinted pill fill */
+  --accent-ink: #a34f30;  /* text on the tint — 4.7:1, AA. Solid #D97757 with white text is only
+                             3.1:1, which fails at 13px, so the pill is a tint not a fill. */
+  --danger: #c0392b;
+  --ok: #2e7d32;
+  --ok-soft: #e6f4e6;     /* tinted green fill for the selected card/row. Tint not a solid
+                             fill, same reason as --accent-soft: --ink stays readable on it. */
+  --warn: #b8860b;
+  --chip-bg: #efefee;
+  --track: #e8e8e6;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111110;
+    --panel: #1a1a19;
+    --ink: #f0f0ee;
+    --dim: #9a9a96;
+    --line: #2c2c2a;
+    --chip-bg: #262624;
+    --track: #2c2c2a;
+    --ok-soft: #1e2c1e;
+    --accent-soft: #3a241c;
+    --accent-ink: #e89b7f; /* 6.5:1 on --accent-soft */
+  }
+  /* Dark inverts the direction — the card is dark, so the track goes lighter (1.49:1). Not #fff,
+     which reads as a lit stripe across a dark card. */
+  .card.sel { --track: #3d463b; }
+}
+* { box-sizing: border-box; }
+/* Tabs navigate by hash (app.js), so the browser scrolls each panel to viewport top — straight
+   under the sticky header. Keep in sync with the header's rendered height. */
+html { scroll-padding-top: 60px; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 13px;
+}
+/* Title, tabs and actions share one row, and exactly one element is sticky — no second bar pinned
+   at a guessed offset, which is what used to let the header swallow the tab strip. */
+/* `body >` is load-bearing: cards render their own <header class="card-h"> (app.js), so a bare
+   `header` selector made every card header sticky at top:0 and z-index:5 too — pinning them over
+   this one as the list scrolled. */
+body > header {
+  position: sticky; top: 0; z-index: 5; background: var(--bg);
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 12px; flex-wrap: nowrap;
+}
+h1 { font-size: 19px; margin: 0; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; }
+button {
+  cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 8px; padding: 7px 12px; font-size: 13px;
+}
+button:hover { border-color: var(--accent); }
+button[disabled] { opacity: .5; cursor: default; }
+#refresh { margin-left: auto; } /* pushes the actions right; .age must NOT also use auto, or the
+                                   two margins split the slack and gap the pair apart */
+.age { color: var(--dim); font-size: 12px; white-space: nowrap; }
+
+/* Sort + filter, shown only on the two panels that have rows to order (app.js show()). No
+   margin-left:auto here — #refresh above already claims the row's slack, and a second auto margin
+   would split it and gap the refresh/age pair apart. */
+.ctl { display: flex; align-items: center; gap: 8px; font-size: 13px; white-space: nowrap; }
+/* display:flex beats [hidden]'s UA display:none — same trap as section[hidden] below. */
+.ctl[hidden] { display: none; }
+.ctl label { display: flex; align-items: center; gap: 5px; color: var(--dim); cursor: pointer; }
+/* appearance:none because macOS anchors the UA chevron to the border box and ignores
+   padding-right entirely — no amount of padding moves it off the edge. Drawing our own is the only
+   way to control that gap, and it also stops the native arrow from staying dark in dark mode.
+   The stroke is a fixed mid-grey rather than var(--dim): a data URI cannot read a custom property,
+   and #8a8a86 sits between the light and dark values of --dim, so one rule serves both themes. */
+select {
+  appearance: none; -webkit-appearance: none;
+  cursor: pointer; border: 1px solid var(--line); color: var(--ink);
+  border-radius: 8px; padding: 7px 34px 7px 12px; font-size: 13px;
+  background-color: var(--panel);
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a8a86' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
+select:hover { border-color: var(--accent); }
+
+/* Tabs are now the primary navigation, so focus must be visible and the active tab unmistakable. */
+/* min-width:0 is load-bearing: a flex item defaults to min-width:auto and refuses to shrink below
+   its content, so without it overflow-x never engages and the strip blows the row out instead of
+   scrolling. Same failure family as the minmax(0,1fr) on .cards. */
+.tabs {
+  display: flex; gap: 2px; flex-wrap: nowrap;
+  min-width: 0; overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button {
+  border: 0; border-radius: 8px;
+  background: none; color: var(--dim);
+  padding: 7px 12px; font-size: 13px; font-weight: 500;
+  white-space: nowrap;
+  display: flex; align-items: center; gap: 6px;
+}
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { color: var(--accent-ink); background: var(--accent-soft); }
+.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* ⚠ on a tab whose panel fell back to raw text. Without it, a hidden broken panel is invisible. */
+.tabs .flag { color: var(--warn); font-size: 11px; }
+
+section[hidden] { display: none; }
+
+main { padding: 20px 24px 60px; display: grid; gap: 18px; max-width: 1100px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+
+/* Raw fallback: shown whenever a parser stops recognising claudex's output. */
+pre.raw {
+  margin: 0; padding: 12px; overflow-x: auto;
+  background: var(--chip-bg); border-radius: 8px;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
+}
+.fallback { color: var(--warn); font-size: 12px; margin: 0 0 10px; }
+
+/* minmax(0, 1fr), not 1fr: a grid track defaults to min-width:auto and refuses to shrink below its
+   content, so one long member name or timestamp would blow past its share and break the two-up. */
+/* Usage and Pool render cards straight onto the page — the cards are the boxes, so panel chrome
+   around them would just be a box inside a box. Accounts and Pool status keep theirs: the container
+   is what groups their otherwise loose rows. ID beats the `section` element selector on specificity,
+   so this holds regardless of source order. */
+#usage, #pool { background: none; border: 0; padding: 0; }
+
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 700px) { .cards { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+/* Selection. The whole card tints instead of a glyph in the header — a 11px dot was too easy to
+   miss, and on Pool cards the dot is already spoken for by `sharing`. */
+/* --track is tuned to sit against --panel, so on the tinted card it lands at almost the same
+   lightness as the tint and the empty half of every gauge vanishes. Overriding the variable — .bar
+   is its only consumer — beats a second .bar rule.
+   Darker than the tint, not lighter: --ok-soft is already near-white, so #fff only reaches 1.14:1
+   against it — below the 1.23:1 an ordinary card gets. A step down lands at 1.30:1, and tinting it
+   green rather than grey keeps it reading as part of the card. */
+.card.sel { background: var(--ok-soft); border-color: var(--ok); --track: #c2dbc2; }
+.card-h { display: flex; align-items: baseline; gap: 7px; margin-bottom: 10px; min-width: 0; }
+.card-h .net { margin-left: auto; }
+.name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; }
+.plan { color: var(--dim); font-size: 11px; white-space: nowrap; }
+.gauges { display: grid; gap: 6px; }
+/* Both Usage and Pool cards. flex, not inline-block: Pool has two buttons and they need a gap that
+   does not depend on the whitespace between them in the template.
+   justify-content, not the margin-left:auto used everywhere else in this file (#refresh, .card-h
+   .net, .dlg-h form): those rows right-align a single child. Pool has two buttons, and an auto
+   margin on both would split the slack between them instead of pushing the pair right. */
+.card-actions { margin-top: 10px; display: flex; justify-content: flex-end; gap: 6px; }
+/* Scoped to .card-actions, not to a single class — every button down here is a small one. */
+.card-actions button { padding: 4px 10px; font-size: 12px; }
+
+/* Toasts — every message and error in the app. popover puts the container in the top layer (above
+   the <dialog>), so the UA's popover defaults have to be undone: it otherwise arrives centred by
+   `inset: 0; margin: auto` with a border and a canvas background.
+   pointer-events none on the container, auto on each toast: without it the stack's box would eat
+   clicks across the top of the page even while empty.
+   Top-centred, below the sticky header (12px padding + ~43px content). Column order, not reverse:
+   the newest belongs nearest its anchor, and here the anchor is the top edge. */
+#toasts {
+  position: fixed; inset: 68px auto auto 50%; transform: translateX(-50%);
+  margin: 0; padding: 0;
+  border: 0; background: none; overflow: visible;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  max-width: min(380px, calc(100vw - 32px));
+  pointer-events: none;
+}
+/* A <button>, so the global `button` rule above already set border/padding/font-size — these
+   restate them rather than inheriting a shape meant for the toolbar. */
+.toast {
+  pointer-events: auto;
+  text-align: left; cursor: pointer;
+  background: var(--panel); color: var(--ink);
+  border: 1px solid var(--ok); border-left-width: 3px;
+  border-radius: var(--radius);
+  padding: 10px 12px; font-size: 12px; line-height: 1.4;
+  box-shadow: 0 4px 14px rgb(0 0 0 / .18);
+  animation: toast-in .15s ease-out;
+}
+.toast.bad { border-color: var(--danger); }
+.toast:hover { border-color: var(--accent); } /* else `button:hover` recolours the status bar */
+@keyframes toast-in { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
+.gauge { display: grid; grid-template-columns: 52px 1fr 40px auto; gap: 9px; align-items: center; }
+.gauge .lbl { color: var(--dim); font-size: 11px; }
+.gauge .pct { text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; }
+.gauge .at { color: var(--dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar { background: var(--track); border-radius: 99px; height: 20px; overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: 99px; background: var(--ok); }
+/* Thresholds match the CLI's own legend: █ <50%  █ <80%  █ ≥80% */
+.bar.warn > i { background: var(--warn); }
+.bar.danger > i { background: var(--danger); }
+.nodata { color: var(--dim); font-style: italic; font-size: 12px; }
+
+/* Card rows are the only gauges whose 4 columns must line up card-to-card, so they get fixed rails
+   instead of the shared `auto` last track. With `auto` the time column sized to its own string
+   ("1:09am" vs "Aug 23 12:29pm" vs empty on a 0% row) and the 1fr bar absorbed the difference — so
+   every bar came out a different width. 92px fits the longest observed value, "Aug 26 10:29am",
+   without ellipsis, and stays reserved when `.at` is empty; that empty gap is what holds the
+   alignment. Scoped to .gauges because the dialog needs a wider last rail — its "resets <time>"
+   strings are ~20 chars and 92px would clip them (see #detail .gauge). minmax(0, 1fr) for the reason
+   at the .cards rule above: the
+   "no reading" fallback puts text in the bar column, and an auto min track refuses to shrink below
+   it, blowing the row out in the one-column layout. */
+.gauges .gauge { grid-template-columns: 52px minmax(0, 1fr) 40px 92px; }
+
+.dot { font-size: 11px; line-height: 1; }
+.dot.on { color: var(--ok); }
+.dot.off { color: var(--line); }
+.net { font-variant-numeric: tabular-nums; font-size: 12px; white-space: nowrap; }
+.net.pos { color: var(--ok); }
+.net.neg { color: var(--danger); }
+
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); font-weight: 600; padding: 0 10px 8px 0; }
+td { padding: 7px 10px 7px 0; border-top: 1px solid var(--line); }
+/* td, not tr: the row's border-top lives on the cells, so a tr background paints under it. */
+tr.active td { font-weight: 600; background: var(--ok-soft); }
+
+.pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.pill { border: 1px solid var(--line); border-radius: 99px; padding: 5px 12px; font-size: 12px; background: var(--chip-bg); }
+.pill.on { border-color: var(--ok); color: var(--ok); }
+.checks { display: grid; gap: 4px; font-size: 12px; }
+.checks div { display: flex; gap: 8px; }
+.checks .d { color: var(--dim); }
+.bad { color: var(--danger); }
+.note { color: var(--dim); font-size: 11px; margin: 12px 0 0; }
+
+/* ---- pool member breakdown (the <dialog>) ---- */
+/* Native <dialog>, so there is no overlay div, no z-index race with the sticky header, and no focus
+   trap to hand-roll — the browser owns all three. */
+dialog#detail {
+  padding: 0;
+  width: min(680px, 92vw);
+  max-height: 85vh;
+  overflow: hidden; /* .body owns the scrolling now — see #detail > .body below */
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+dialog#detail::backdrop { background: rgb(0 0 0 / 0.45); }
+/* [open] is load-bearing: the UA hides a closed dialog with `dialog:not([open]) { display: none }`,
+   and any author `display` on a bare `dialog#detail` outranks it — the modal would sit permanently
+   visible on the page. */
+dialog#detail[open] { display: flex; flex-direction: column; }
+.dlg-h, .dlg-f { flex: none; }
+.dlg-h { display: flex; align-items: baseline; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.dlg-h form { margin-left: auto; } /* only ONE auto margin on this row — see the #refresh note above */
+.dlg-h .close { border: 0; background: none; color: var(--dim); padding: 2px 6px; font-size: 14px; }
+.dlg-h .close:hover { color: var(--ink); }
+/* min-height: 0 — a flex item defaults to min-height:auto and refuses to shrink below its content,
+   so without it the body grows past the dialog's max-height and pushes the footer off screen instead
+   of scrolling. Same failure family as the minmax(0, 1fr) notes above. `auto` covers both axes,
+   which is also what gives .flows its sideways scroll on a narrow screen. */
+#detail > .body { padding: 14px 16px; overflow: auto; min-height: 0; }
+.dlg-f { padding: 10px 16px; border-top: 1px solid var(--line); }
+#detail-raw { padding: 4px 10px; font-size: 12px; }
+#detail h3 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--dim); font-weight: 600; margin: 18px 0 8px;
+}
+
+/* Fixed rails, same reason as the card gauges above: with auto layout all seven columns sized
+   to whatever string claudex printed, so the columns moved member-to-member. Only the two end rails
+   need naming — `fixed` splits the rest equally across the five numeric columns, and equal is what
+   makes them line up. 646px inner - 84 - 118 = 88px each, ~79px after the 10px cell padding, which
+   holds "5689.3M" and the widest header, CACHE W.
+   min-width: `fixed` clips overflowing cells rather than growing them, so below this the table
+   scrolls sideways inside .body instead of mangling the numbers. */
+.flows { table-layout: fixed; min-width: 560px; }
+.flows th:first-child, .flows td.lbl { width: 84px; }
+.flows th:last-child,  .flows td.d   { width: 118px; }
+.flows td { font-variant-numeric: tabular-nums; text-align: right; }
+/* Headers must follow their cells, which are right-aligned. The generic `th { text-align: left }` at
+   the top of this file is what pulled IN/OUT/CACHE off their numbers. :first-child outranks this, so
+   the label column keeps its left align. */
+.flows th { text-align: right; }
+.flows th:first-child, .flows td.lbl { text-align: left; }
+.flows td.lbl { font-weight: 500; font-variant-numeric: normal; }
+.flows td.d { color: var(--dim); font-size: 11px; text-align: left; padding-left: 10px; }
+.net-line { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 0; }
+.net-line .lbl, .net-line .d { color: var(--dim); font-size: 11px; }
+
+.window { margin-bottom: 14px; }
+.window .note { margin: 6px 0 0; }
+.drivers { display: grid; gap: 6px; margin-top: 6px; } /* == the gap between drivers: one stack */
+/* Every gauge in the dialog shares one template, so the window row and the driver rows beneath it
+   are two grids with identical tracks and their bars line up as if they were one. Same discipline as
+   `.gauges .gauge` above, different numbers: 140px fits a member name before it ellipsises, and
+   132px holds "resets Aug 23 12:29pm" at 11px — the cards' 92px would clip it. The rail stays
+   reserved when `.at` is empty; that empty gap is what holds the alignment.
+   Was `140px 1fr 40px auto` scoped to .drivers, which left the window row on the bare .gauge's 52px
+   and let the auto track size to its own string — four different bar widths in one panel.
+   minmax(0, 1fr) because the "no reading" fallback puts text in the bar column. */
+#detail .gauge { grid-template-columns: 140px minmax(0, 1fr) 40px 132px; }
+/* Member names must ellipsis rather than push the bar off the row, and read as ink against the dim
+   5-hour / week labels sharing the same rail. */
+.drivers .gauge .lbl {
+  color: var(--ink); font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ---- boot gate ---- */
+/* Opaque and full-bleed, because it is non-modal (see index.html) and so gets no ::backdrop and a
+   UA `position: absolute` that would scroll away with the page. Covering the viewport here is what
+   makes "show nothing until the data arrives" true visually; `inert` in the markup makes it true
+   for focus and assistive tech. max-*: none undoes the UA's dialog sizing. */
+#gate {
+  position: fixed; inset: 0;
+  width: auto; height: auto; max-width: none; max-height: none;
+  margin: 0; border: 0; padding: 24px;
+  background: var(--bg); color: var(--ink);
+}
+/* [open], not a bare #gate — the same trap the dialog#detail[open] rule above documents: the UA
+   hides a closed dialog with `dialog:not([open]) { display: none }`, and ANY author display on the
+   bare selector outranks it, pasting the gate permanently over the dashboard.
+   align-content, not place-content: centred content that outgrows its box gets clipped at the TOP
+   and becomes unreachable, and claudex's error pages are tall. */
+#gate[open] { display: grid; align-content: center; justify-items: center; gap: 14px; }
+#gate h2 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
+/* pre.raw already scrolls sideways; this caps the height so Retry stays on screen under it. */
+#gate .body { max-width: min(680px, 92vw); max-height: 60vh; overflow: auto; }
+#gate .gate-a { margin: 14px 0 0; text-align: center; }
+
+/* ---- confirm ---- */
+/* No `display` of its own, so this one never needs the [open] qualifier — that trap only exists
+   where you set display. */
+dialog#confirm {
+  width: min(420px, 92vw); padding: 18px;
+  background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+dialog#confirm::backdrop { background: rgb(0 0 0 / 0.45); } /* == #detail's, one modal look */
+#confirm h2 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+#confirm p { margin: 0 0 16px; color: var(--dim); font-size: 12px; line-height: 1.5; }
+/* justify-content, not margin-left:auto — two children, and an auto margin on both splits the slack
+   instead of pushing the pair right. Same note as .card-actions above. NOT class="dlg-f": that adds
+   a border-top meant for the detail footer. */
+#confirm form { display: flex; justify-content: flex-end; gap: 8px; }
+/* .bad already supplies var(--danger) text; only the border needs saying. The confirm button
+   carries the consequence, so it reads as the loud one. */
+#confirm .bad { border-color: var(--danger); }

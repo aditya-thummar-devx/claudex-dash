@@ -1,0 +1,23 @@
+
+╭─ alice.stoneham · Max 5x ────────────────────────────────────────────────────╮
+│  ▶ ● on   offline                                                            │
+│            in       out      cache r    cache w    req                       │
+│  own       11.1M    38.4M    5671.7M    282.7M     52717  my token → me      │
+│  borrowed  2.6M     5.9M     1267.0M    45.0M      8947  from pool           │
+│  shared    6.0M     7.9M     3722.7M    66.1M      13094  to pool            │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  net give/take  +2482.3M  ↑ giver                                            │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  USAGE SPLIT                                                                 │
+│  5-hour   9% used  · resets 1:09am                                           │
+│    who drove your traffic:                                                   │
+│    alice.stoneham (you)  ██████████████████ 100%  123.7M                     │
+│                                                                              │
+│  week   9% used  · resets Aug 23 12:29pm                                     │
+│    who drove your traffic:                                                   │
+│    alice.stoneham (you)  █████████████████░  95%  720.9M                     │
+│    daniel.ortiz          █░░░░░░░░░░░░░░░░░   3%  21.2M                      │
+│    elena.brooks          ░░░░░░░░░░░░░░░░░░   2%  13.1M                      │
+│  shares are of observed proxy tokens, approximate                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

@@ -1,0 +1,36 @@
+
+  Pool   ·   10 members · 10 sharing · live
+
+  ▶ ● alice.stoneham  · Max 5x · ● on 
+        session █░░░░░░░   9%  Aug 20 1:10am
+        week    █░░░░░░░   9%  Aug 23 12:30pm   net +2482.3M
+    ○ elena.brooks  · Team · ● on 
+        session ░░░░░░░░   2%  Aug 20 1:40am
+        week    █████░░░  65%  Aug 23 6:30pm   net −489.6M
+    ○ farhan.mills  · Team · ● on 
+        session ░░░░░░░░   0%
+        week    █░░░░░░░  13%  Aug 26 10:30am   net +271.0M
+    ○ gita.nairn  · Team · ● on 
+        session ░░░░░░░░   0%
+        week    █████░░░  57%  Aug 20 11:30am   net −604.9M
+    ○ brian.cooley  · Max 5x · ● on 
+        session ███░░░░░  32%  11:40pm
+        week    ███████░  87%  Aug 20 4:30am   net +4420.1M
+    ○ cheryl.dawson  · Max 5x · ● on 
+        session ░░░░░░░░   —
+        week    ░░░░░░░░   —   net −1137.3M
+    ○ hugo.vandenberge  · Team · ● on 
+        session ░░░░░░░░   0%
+        week    ████░░░░  52%  Aug 24 1:30am   net −3012.8M
+    ○ daniel.ortiz  · Team · ● on 
+        session ████░░░░  55%  Aug 20 12:40am
+        week    ████████ 100%  Aug 21 9:30am   net −4385.5M
+    ○ ines.valentine  · Team · ● on 
+        session ░░░░░░░░   0%
+        week    ██░░░░░░  21%  Aug 21 12:30pm   net +1099.8M
+    ○ joanna  · Max 5x · ● on 
+        session ░░░░░░░░   3%  Aug 20 12:20am
+        week    ████░░░░  56%  Aug 20 5:30pm   net +1357.0M
+
+  full breakdown: claudex pool member <name>
+
