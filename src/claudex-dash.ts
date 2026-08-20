@@ -6,8 +6,9 @@
 //      holding four account tokens.
 //   2. An expired token can make claudex stall or prompt. An unbounded spawn would wedge the
 //      request forever, so every run has a hard timeout and reads fall back to stale cache.
-//   3. Exactly two commands here change state — `switch` and `pool use`, both driven by the
-//      dashboard's Switch buttons. Everything else is read-only, and stays that way.
+//   3. Exactly four commands here change state — `switch`, `pool use`, `access allow|deny`, and
+//      `pool start|stop`, all driven by buttons on the page. Everything else is read-only, and
+//      stays that way.
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
@@ -36,17 +37,28 @@ const TTL_MS = 60_000;
 // READ-ONLY ALLOWLIST. Every arg array below is a hardcoded constant — no user input ever reaches
 // argv, and spawn runs without a shell.
 //
-// NEVER add: login · add · remove · rename · pool start/stop/join · access
-//            sessions share/pull · keep-warm · refresh · autoswitch · update
-// Those create or destroy profiles, move tokens between people, or change who may borrow this
-// account. None of them belong behind a button on a web page.
+// NEVER add: login · add · remove · rename · pool join
+//            sessions share/pull · keep-warm · refresh · autoswitch · update · access remove
+// Those create or destroy profiles, move tokens between people, or erase someone from your access
+// list with no way back from a web page. None of them belong behind a button.
 //
-// Three commands live OUTSIDE this table because they take an argument:
-//   `pool member <name>` (read-only)  — captureMember()
-//   `switch <name>`      (mutating)   — switchAccount()
-//   `pool use <name>`    (mutating)   — poolUse()
+// `access` used to be on that list wholesale. It is not any more: bare `access` is a read, and
+// `access allow|deny <name>` is reachable from the Access tab — see accessSet() below for the line
+// that was drawn and where. `access remove` stays banned, hence its explicit entry above.
+//
+// `pool start`/`pool stop` used to be banned wholesale too. They are not any more, but they are a
+// different shape from everything reachable here: no argument, so no coworker's name to check —
+// what they flip is a boolean on THIS account. `pool join` stays banned: it is the one-way step of
+// enrolling this account in a pool for the first time, and that still doesn't belong behind a
+// button. See poolStart()/poolStop() below.
+//
+// Four commands live OUTSIDE this table because they take an argument:
+//   `pool member <name>`        (read-only)  — captureMember()
+//   `switch <name>`             (mutating)   — switchAccount()
+//   `pool use <name>`           (mutating)   — poolUse()
+//   `access allow|deny <name>`  (mutating)   — accessSet()
 // The rule they share: the name is user-supplied, so the caller MUST validate it against a list
-// claudex itself printed before it reaches argv. The two mutating ones additionally stay out of
+// claudex itself printed before it reaches argv. The three mutating ones additionally stay out of
 // COMMANDS (captureAll() would run them on every page load) and out of capture() (a 60s TTL would
 // silently no-op a second switch within the minute).
 export const COMMANDS = {
@@ -56,6 +68,7 @@ export const COMMANDS = {
   list: ["list"],
   current: ["current"],
   doctor: ["doctor"],
+  access: ["access"], // read-only: prints who may borrow this account. allow/deny is accessSet().
 } as const;
 
 export type CommandKey = keyof typeof COMMANDS;
@@ -145,3 +158,27 @@ async function action(args: readonly string[]): Promise<ActionResult> {
 // we closed, and the HTTP request would hang until the timeout kills it.
 export const switchAccount = (name: string) => action(["switch", name, "--force"]);
 export const poolUse = (name: string) => action(["pool", "use", name]);
+
+// The one mutating command this file was originally written to refuse — see the note on COMMANDS.
+// Two things keep it inside the same guarantee as the other two rather than widening it:
+//
+//   1. `verb` is a union, not a string. The only two words that can reach argv here are spelled out
+//      in this signature, so `access remove` is unreachable from any caller no matter what arrives
+//      over the wire. server.ts validates the incoming value against the same two before calling.
+//   2. `name` is subject to the same untrusted-name rule as switchAccount() and poolUse(): it must
+//      already appear in the list `claudex access` itself printed. That list is its OWN namespace —
+//      close in shape to `pool members`, and not interchangeable with it.
+export const accessSet = (name: string, verb: "allow" | "deny") => action(["access", verb, name]);
+
+// The two mutating commands this file was originally written to refuse — see the note on COMMANDS
+// above. Unlike everything else exported here, neither takes a name: `pool start`/`pool stop` flip
+// whether THIS account is currently borrowing from the pool via token-swap, on or off. There is no
+// coworker's name to validate, which is why server.ts's route for this pair has no name list to
+// check against.
+//
+// Shipped without --force: unlike switchAccount, whether these ever prompt is unverified (closed
+// source, no fixture shows the `consuming: on` state). If one hangs to ACTION_TIMEOUT_MS on first
+// real use, that's the signal to add the equivalent flag here — safer than guessing an unsupported
+// flag now and breaking the command outright.
+export const poolStart = () => action(["pool", "start"]);
+export const poolStop = () => action(["pool", "stop"]);

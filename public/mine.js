@@ -9,8 +9,8 @@
 // the 400: `pool use` spends a coworker's quota, so picking the wrong branch is not a cosmetic bug.
 //
 // Returns null wherever the button would be pointless or wrong, and every one of those is an
-// ordinary state: no CLAUDEX_ME configured, a panel that fell back to raw text, the Health tab, or
-// already being on your own account. Null hides the button — the same choice usageHtml makes when
+// ordinary state: no CLAUDEX_ME configured, a panel that fell back to raw text, a tab with no
+// accounts on it (Health, Access), or already being on your own account. Null hides the button — the same choice usageHtml makes when
 // it renders no Switch at all on the row you are already on.
 export function mineTarget(last, tab) {
   const me = last?.me;
@@ -33,6 +33,6 @@ export function mineTarget(last, tab) {
         ? null
         : { kind: "switch", name: me.account };
     default:
-      return null; // Health shows no accounts, so there is nothing here to switch to
+      return null; // Health and Access show no accounts, so there is nothing here to switch to
   }
 }

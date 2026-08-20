@@ -341,3 +341,38 @@ export function parseMemberDetail(text: string): MemberDetail | null {
   // `own` is the fingerprint: no sibling command prints a flow row labelled that.
   return d.flows.some((f) => f.label === "own") ? d : null;
 }
+
+export type AccessPerson = { name: string; allowed: boolean };
+
+// `access` — who may borrow YOUR pooled account. A different list from `pool members`, in the same
+// dotted-name namespace, so the two must never be crossed (see server.ts).
+//
+//   ╭─ Access to your account ──── 8 people ─╮
+//   │  ● alice.stoneham     allowed          │
+//   │  ● hugo.vandenberge   blocked          │
+//   ╰────────────────────────────────────────╯
+//     allow / block / remove:  access allow <name> · …
+//
+// Keyed on the word, not the dot: claudex prints ● on every row and carries allowed/blocked in the
+// ANSI colour, which lines() strips. Note the CLI says "block" in its own footer hint but prints
+// "blocked" as the state and takes `deny` as the verb — three spellings of one thing, so only the
+// printed state is matched here.
+const ACCESS_HEAD = /Access to your account/;
+const ACCESS_ROW = /^\s*[●○]\s+(\S+)\s+(allowed|blocked)\s*$/;
+
+export function parseAccess(text: string): AccessPerson[] | null {
+  if (CLI_ERROR.test(text)) return null;
+  const ls = lines(text);
+  // Unlike every parser above, this one returns [] rather than null for a recognised-but-empty box:
+  // the heading is a strong enough fingerprint on its own, and having nobody on your access list is
+  // an ordinary state. Falling back to raw text there would put a ⚠ on the tab for "all fine, list
+  // is empty". A missing heading still means we are not looking at `access` output at all.
+  if (!ls.some((l) => ACCESS_HEAD.test(l))) return null;
+  const people: AccessPerson[] = [];
+  for (const line of ls) {
+    if (!line.includes("│")) continue; // box interior only — the footer hint line is not a row
+    const m = line.replace(/^\s*│/, "").replace(/│\s*$/, "").match(ACCESS_ROW);
+    if (m) people.push({ name: m[1], allowed: m[2] === "allowed" });
+  }
+  return people;
+}

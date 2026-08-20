@@ -1,0 +1,13 @@
+
+╭─ Access to your account ──────────────────────────────────── 8 people ─╮
+│  ● alice.stoneham     allowed                                          │
+│  ● brian.cooley       allowed                                          │
+│  ● cheryl.dawson      allowed                                          │
+│  ● daniel.ortiz       allowed                                          │
+│  ● elena.brooks       allowed                                          │
+│  ● farhan.mills       allowed                                          │
+│  ● gita.nairn         allowed                                          │
+│  ● hugo.vandenberge   blocked                                          │
+╰────────────────────────────────────────────────────────────────────────╯
+  allow / block / remove:  access allow <name> · access deny <name> · access remove <name>
+

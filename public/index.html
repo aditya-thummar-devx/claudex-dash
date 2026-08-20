@@ -25,14 +25,6 @@
      tech. app.js lifts it in one place, next to gate.close(). -->
 <header id="hdr" inert>
   <h1>claudex-dash</h1>
-  <nav class="tabs" role="tablist" aria-label="claudex-dash panels">
-    <button role="tab" id="tab-usage"    aria-controls="usage"    aria-selected="true">Usage<span class="count"></span></button>
-    <button role="tab" id="tab-pool"     aria-controls="pool"     aria-selected="false"
-            title="Pool members">Pool<span class="count"></span></button>
-    <button role="tab" id="tab-accounts" aria-controls="accounts" aria-selected="false">Accounts<span class="count"></span></button>
-    <button role="tab" id="tab-status"   aria-controls="status"   aria-selected="false"
-            aria-label="Pool status &amp; health" title="Pool status &amp; health">Health</button>
-  </nav>
   <!-- Outside every <section>, so render()'s innerHTML never destroys it and the listeners can be
        bound once. Options are built from SORTS in app.js so the menu cannot drift from the
        comparators behind it. -->
@@ -40,16 +32,34 @@
     <label><input type="checkbox" id="only5x" /> 5x only</label>
     <select id="sort" aria-label="Sort accounts"></select>
   </div>
-  <!-- Before #refresh on purpose: #refresh owns this row's margin-left:auto (styles.css) and a
-       second auto margin would split the slack between them. Hidden until app.js finds a target. -->
+  <!-- Both of the next two buttons must stay before #refresh: #refresh owns this row's
+       margin-left:auto (styles.css) and a second auto margin would split the slack between them.
+       Both are hidden until app.js has something for them to do. -->
   <button id="mine" hidden>Switch to mine</button>
+  <!-- Pool start/stop toggle: carries no data-name (pool start/pool stop take no argument) — just
+       data-kind ("start"/"stop"), set by updateConsuming() in app.js from consuming.js. Ships with
+       no text: always populated before it's ever un-hidden. -->
+  <button id="consuming" hidden></button>
   <button id="refresh">↻ Refresh</button>
   <span class="age" id="age"></span>
 </header>
+<!-- Fixed to the bottom of the viewport (styles.css). Own inert, same reason as #hdr: not
+     focusable/clickable until app.js lifts it next to gate.close(). -->
+<nav class="tabs" id="tabbar" role="tablist" aria-label="claudex-dash panels" inert>
+  <button role="tab" id="tab-usage"    aria-controls="usage"    aria-selected="true">Usage<span class="count"></span></button>
+  <button role="tab" id="tab-pool"     aria-controls="pool"     aria-selected="false"
+          title="Pool members">Pool<span class="count"></span></button>
+  <button role="tab" id="tab-accounts" aria-controls="accounts" aria-selected="false">Accounts<span class="count"></span></button>
+  <button role="tab" id="tab-access"   aria-controls="access"   aria-selected="false"
+          aria-label="Who may borrow your account" title="Who may borrow your account">Access<span class="count"></span></button>
+  <button role="tab" id="tab-status"   aria-controls="status"   aria-selected="false"
+          aria-label="Pool status &amp; health" title="Pool status &amp; health">Health</button>
+</nav>
 <main id="app" inert>
   <section id="usage"    role="tabpanel" aria-labelledby="tab-usage"><div class="body"></div></section>
   <section id="pool"     role="tabpanel" aria-labelledby="tab-pool" hidden><div class="body"></div></section>
   <section id="accounts" role="tabpanel" aria-labelledby="tab-accounts" hidden><div class="body"></div></section>
+  <section id="access"   role="tabpanel" aria-labelledby="tab-access" hidden><div class="body"></div></section>
   <section id="status"   role="tabpanel" aria-labelledby="tab-status" hidden><div class="body"></div></section>
 </main>
 <!-- Native <dialog>: Esc, focus trap, backdrop and background inertness come free, and the close
@@ -61,11 +71,18 @@
     <form method="dialog"><button class="close" aria-label="Close">&#10005;</button></form>
   </header>
   <div class="body"></div>
-  <footer class="dlg-f"><button id="detail-raw" aria-pressed="false">show raw</button></footer>
+  <!-- Refresh is first in DOM order so it is the first stop on Tab into the footer. It refetches
+       THIS member only: the Pool cards behind the dialog come from `pool members`, one command for
+       everyone, so there is no per-person capture that could refresh them alongside this. -->
+  <footer class="dlg-f">
+    <button id="detail-refresh">↻ Refresh</button>
+    <button id="detail-raw" aria-pressed="false">show raw</button>
+  </footer>
 </dialog>
-<!-- Both writes ask first. Outside <main> on purpose: inside, these buttons would bubble into the
-     write handler bound there. closest("button.switch") returns null for them today, but that is a
-     landmine for whoever next adds a class.
+<!-- Every write asks first. Outside <main> on purpose: inside, these buttons would bubble into the
+     write handler bound there. That handler matches on closest("button[data-kind]") and these two
+     carry no data-kind, so they miss it today — but a Cancel button that ever grew one would fire a
+     switch, so keeping them out here is the actual defence rather than the selector.
 
      Enter confirms with no key handler, from four native behaviours in sequence:
        1. showModal() focuses the first `autofocus` descendant. Without it engines focus the dialog

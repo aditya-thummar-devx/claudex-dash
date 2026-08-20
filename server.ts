@@ -1,20 +1,24 @@
-// claudex-dash — a web view of claudex state, with two actions.
+// claudex-dash — a web view of claudex state, with four actions.
 //
-// Four API routes plus static files. Two GETs compose the panels from six CLI captures; each panel
+// Six API routes plus static files. Two GETs compose the panels from seven CLI captures; each panel
 // carries both parsed data and the raw text it came from, so a parser that stops recognising
 // claudex's output degrades that panel to plain text instead of showing wrong numbers.
 //
-// Two POSTs back the dashboard's Switch buttons: `claudex switch` and `claudex pool use`. They are
-// the only routes that change anything, and they are held to three rules — same-origin only, JSON
-// content type only, and a name that claudex itself already listed.
+// Four POSTs back the page's buttons: `claudex switch`, `claudex pool use`,
+// `claudex access allow|deny`, and `claudex pool start|stop`. They are the only routes that change
+// anything, and they are held to the same rules — same-origin only, JSON content type only, and —
+// for the three that take one — a name that claudex itself already listed, in the namespace of the
+// command about to receive it. The fourth takes no name at all; see the POSTS table below.
 import { join } from "node:path";
-import { captureAll, captureMember, switchAccount, poolUse } from "./src/claudex-dash.ts";
+import {
+  captureAll, captureMember, switchAccount, poolUse, accessSet, poolStart, poolStop,
+} from "./src/claudex-dash.ts";
 import type { Capture } from "./src/claudex-dash.ts";
 import { sameOrigin } from "./src/guard.ts";
 import { resolveMe, whoAmI } from "./src/me.ts";
 import {
   parseUsage, parseList, parseCurrent, parsePoolStatus, parseDoctor, parsePoolMembers,
-  parseMemberDetail,
+  parseMemberDetail, parseAccess,
 } from "./src/parse.ts";
 
 // Overridable because 4400 is not reserved for us — and because running the bootstrap twice would
@@ -58,6 +62,40 @@ function pair(a: Capture, b: Capture, data: unknown): Panel {
 // Both spellings of this machine — see src/guard.ts for why refusing one buys nothing.
 const ORIGINS = [`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`];
 
+// The four mutating routes, one row each. A table rather than branches because the rows must be
+// read side by side: each names the list its `name` has to appear in, and those lists are DIFFERENT
+// NAMESPACES that must never be crossed. `switch` wants the short profile name from `claudex list`
+// ("brian"); `pool use` wants the dotted pool name from `claudex pool members` ("alice.stoneham");
+// `access allow|deny` wants a dotted name too, but off `claudex access` — a separate list that
+// merely looks like the pool one. Validating each against its own source enforces all of that for
+// free, and puts the pairing somewhere it can be checked at a glance. `pool start|stop` carries no
+// name at all — `known: null` marks a route as having nobody to check, see the handler below.
+const POSTS = {
+  "/api/switch": {
+    known: (c: Record<string, Capture>) => parseList(c.list.raw)?.map((a) => a.account),
+    run: (name: string) => switchAccount(name),
+  },
+  "/api/pool/use": {
+    known: (c: Record<string, Capture>) => parsePoolMembers(c.poolMembers.raw)?.map((m) => m.name),
+    run: (name: string) => poolUse(name),
+  },
+  "/api/access": {
+    known: (c: Record<string, Capture>) => parseAccess(c.access.raw)?.map((p) => p.name),
+    // The only route with a second field. `remove` is deliberately absent — see the note at the
+    // check below, and the one on COMMANDS in src/claudex-dash.ts.
+    verbs: ["allow", "deny"] as const,
+    run: (name: string, verb: "allow" | "deny") => accessSet(name, verb),
+  },
+  "/api/pool/toggle": {
+    // No name to validate — pool start/pool stop take no argument, they flip THIS account's own
+    // state. `known: null` tells the handler below to skip the name gate entirely, rather than
+    // treating an empty list as "nobody is valid".
+    known: null,
+    verbs: ["start", "stop"] as const,
+    run: (_name: string, verb: "start" | "stop") => (verb === "start" ? poolStart() : poolStop()),
+  },
+} as const;
+
 const config = {
   port: PORT,
   // 127.0.0.1 ONLY. The pool panel renders coworkers' email addresses and usage figures; this must
@@ -89,6 +127,7 @@ const config = {
         pool: panel(c.poolMembers, members),
         accounts: pair(c.list, c.current, accounts && current ? { accounts, current } : null),
         status: pair(c.poolStatus, c.doctor, status && doctor ? { status, doctor } : null),
+        access: panel(c.access, parseAccess(c.access.raw)),
         // Not a panel: it has no raw text of its own and nothing to fall back to. Null whenever
         // CLAUDEX_ME is unset or names nobody claudex knows, which the page reads as "no button".
         me: resolveMe(ME, accounts, members),
@@ -116,12 +155,14 @@ const config = {
       return Response.json(panel(cap, parseMemberDetail(cap.raw)));
     }
 
-    // ---- the two mutating routes ----
-    // Everything above this point only reads. These two change which account is logged in, so they
-    // carry the guards the GETs do not need: a same-origin check (see src/guard.ts — localhost is
-    // reachable from any page in this browser), a JSON content type (which forces a CORS preflight
-    // this server never answers), and the same name gate as /api/pool/member above.
-    if (req.method === "POST" && (url.pathname === "/api/switch" || url.pathname === "/api/pool/use")) {
+    // ---- the mutating routes ----
+    // Everything above this point only reads. These four change something — which account is
+    // logged in, who may borrow this one, or whether it is currently borrowing from the pool — so
+    // they carry the guards the GETs do not need: a same-origin check (see src/guard.ts — localhost
+    // is reachable from any page in this browser), a JSON content type (which forces a CORS
+    // preflight this server never answers), and — for the three that take a name — the same gate as
+    // /api/pool/member above.
+    if (req.method === "POST" && url.pathname in POSTS) {
       if (!sameOrigin(req.headers.get("origin"), ORIGINS)) {
         return Response.json({ error: "bad origin" }, { status: 403 });
       }
@@ -129,26 +170,35 @@ const config = {
         return Response.json({ error: "expected application/json" }, { status: 415 });
       }
       const body = await req.json().catch(() => null);
-      const name = typeof body?.name === "string" ? body.name : "";
+      const route = POSTS[url.pathname as keyof typeof POSTS];
 
-      // The two commands take names from different namespaces and must not be crossed: `switch`
-      // wants the short profile name from `claudex list` ("brian"), `pool use` wants the dotted
-      // pool name from `claudex pool members` ("alice.stoneham"). Validating each against its own
-      // source list enforces that for free. Uses the cached captures, so the gate normally costs
-      // nothing.
-      const isPool = url.pathname === "/api/pool/use";
-      const c = await captureAll(false);
-      const known = isPool
-        ? parsePoolMembers(c.poolMembers.raw)?.map((m) => m.name)
-        : parseList(c.list.raw)?.map((a) => a.account);
-      // Two different failures, and conflating them lies: no list means we cannot vouch for ANY
-      // name, which is a server problem — not the caller naming someone who does not exist.
-      if (!known) return Response.json({ error: "account list unavailable" }, { status: 503 });
-      if (!known.includes(name)) return Response.json({ error: "unknown name" }, { status: 400 });
+      // Not every route takes a name — /api/pool/toggle flips a boolean with nobody to name — so
+      // `known: null` is how a row opts out of this gate rather than pretending an empty list means
+      // "nobody is valid". Uses the cached captures, so the gate normally costs nothing.
+      let name = "";
+      if (route.known) {
+        name = typeof body?.name === "string" ? body.name : "";
+        const c = await captureAll(false);
+        const known = route.known(c);
+        // Two different failures, and conflating them lies: no list means we cannot vouch for ANY
+        // name, which is a server problem — not the caller naming someone who does not exist.
+        if (!known) return Response.json({ error: "name list unavailable" }, { status: 503 });
+        if (!known.includes(name)) return Response.json({ error: "unknown name" }, { status: 400 });
+      }
+
+      // /api/access and /api/pool/toggle carry a second field, the verb claudex will run. Checked
+      // against a two-item literal rather than passed through — for /api/access that's what puts
+      // `access remove` out of reach of anything arriving over the wire (accessSet() narrows to the
+      // same two, so this is the outer half of one guarantee rather than a lone check). An absent
+      // or unrecognised verb is a 400, never a default.
+      const verb = body?.action;
+      if (route.verbs && !route.verbs.includes(verb)) {
+        return Response.json({ error: "unknown action" }, { status: 400 });
+      }
 
       // claudex prints its own explanation on failure; pass it straight through rather than
       // inventing a message that might not match what actually went wrong.
-      const r = isPool ? await poolUse(name) : await switchAccount(name);
+      const r = await route.run(name, verb);
       return Response.json({ ok: r.ok, raw: r.raw.trim() }, { status: r.ok ? 200 : 500 });
     }
 

@@ -1,9 +1,10 @@
-// One fetch, four panels, no framework. Each panel renders native HTML when its parser recognised
+// One fetch, five panels, no framework. Each panel renders native HTML when its parser recognised
 // claudex's output, and the raw CLI text otherwise — so a claudex update degrades the page to
 // plain text rather than showing numbers we can no longer trust.
 
 import { arrange, SORTS } from "./sort.js";
 import { mineTarget } from "./mine.js";
+import { consumingTarget } from "./consuming.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) =>
@@ -142,7 +143,7 @@ const usageHtml = (rows) =>
         actions: r.active
           ? ""
           : `<div class="card-actions">
-               <button class="switch" data-kind="switch" data-name="${esc(r.account)}">Switch</button>
+               <button data-kind="switch" data-name="${esc(r.account)}">Switch</button>
              </div>`,
       })
     )
@@ -168,7 +169,7 @@ const poolHtml = (members) =>
         // as "already serving you" is an inference. A safe one: the worst a wrong guess does is
         // hide a button whose command (`pool use` on the current member) is a no-op.
         actions: `<div class="card-actions">
-             ${m.marked ? "" : `<button class="switch" data-kind="pool" data-name="${esc(m.name)}">Switch</button>`}
+             ${m.marked ? "" : `<button data-kind="pool" data-name="${esc(m.name)}">Switch</button>`}
              <button class="detail" data-name="${esc(m.name)}">View Details</button>
            </div>`,
       })
@@ -181,12 +182,40 @@ const accountsHtml = (d) => `
     ${d.accounts
       .map(
         (a) => `<tr class="${a.active ? "active" : ""}">
-        <td>${esc(a.account)}</td><td>${esc(a.email)}</td>
+        <td>${esc(a.account)}</td><td title="${esc(a.email)}">${esc(a.email)}</td>
         <td>${esc(a.org)}</td><td>${esc(a.plan)}</td><td>${esc(a.saved)}</td></tr>`
       )
       .join("")}
   </table>
   <p class="note">active: ${esc(d.current.account)} · ${esc(d.current.email)}</p>`;
+
+// Who may borrow YOUR account. A table like accountsHtml rather than cards: there are no gauges
+// here, just a name, a state and one button.
+//
+// One button per row, never two, and it is always the one that would CHANGE something — Deny on an
+// allowed row, Allow on a blocked one. Same choice usageHtml makes when it renders no Switch at all
+// on the account you are already on: a button whose command is a no-op is worse than no button,
+// because the only way to find out it did nothing is to press it.
+const accessHtml = (people) =>
+  !people.length
+    ? EMPTY
+    : `<table>
+    <tr><th>Person</th><th>Access</th><th></th></tr>
+    ${people
+      .map(
+        (x) => `<tr>
+        <td>${esc(x.name)}</td>
+        <td><span class="dot ${x.allowed ? "on" : "off"}">●</span> ${x.allowed ? "allowed" : "blocked"}</td>
+        <td class="act">${
+          x.allowed
+            ? `<button data-kind="deny" data-name="${esc(x.name)}">Deny</button>`
+            : `<button data-kind="allow" data-name="${esc(x.name)}">Allow</button>`
+        }</td>
+      </tr>`
+      )
+      .join("")}
+  </table>
+  <p class="note">these people can borrow your account through the pool · claudex access</p>`;
 
 const statusHtml = (d) => `
   <div class="pills">
@@ -255,6 +284,9 @@ const HTML = {
   usage: (rows) => usageHtml(arrange(rows, opts())),
   pool: (members) => poolHtml(arrange(members, opts())),
   accounts: accountsHtml,
+  // Key order is the tab order for ArrowLeft/Right, so it must match the markup order in
+  // index.html — and PANELS[0] is the tab a bare URL opens.
+  access: accessHtml,
   status: statusHtml,
 };
 const PANELS = Object.keys(HTML);
@@ -279,6 +311,7 @@ const COUNT = {
   usage: (d) => arrange(d, opts()).length,
   pool: (d) => arrange(d, opts()).length,
   accounts: (d) => d.accounts.length,
+  access: (d) => d.length,
 };
 
 // null means "no count": either the panel fell back to raw text, or it never had one. A panel we
@@ -301,6 +334,7 @@ function paint() {
     setCount(name, last[name]?.ok ? COUNT[name]?.(last[name].data) ?? null : null);
   }
   updateMine();
+  updateConsuming();
 }
 
 async function load(fresh) {
@@ -342,6 +376,7 @@ async function load(fresh) {
     if (gate.open) {
       gate.close();
       $("hdr").removeAttribute("inert");
+      $("tabbar").removeAttribute("inert");
       $("app").removeAttribute("inert");
     }
   } catch (e) {
@@ -363,7 +398,8 @@ function show(name) {
     $(p).hidden = p !== name;
     $(`tab-${p}`).setAttribute("aria-selected", String(p === name));
   }
-  // Accounts is a table and Health is not a list at all, so the controls would order nothing there.
+  // Accounts and Access are tables and Health is not a list at all, so the controls would order
+  // nothing on any of them.
   $("ctl").hidden = name !== "usage" && name !== "pool";
   updateMine(); // the tab decides which of the two commands "switch to mine" would run
 }
@@ -396,8 +432,10 @@ for (const p of PANELS) {
 // on each load(), which would drop per-button listeners.
 const dlg = $("detail");
 const rawBtn = $("detail-raw");
+const refreshBtn = $("detail-refresh");
 const details = new Map(); // name -> panel; cleared by load() so a refresh cannot pair a cached
 let shown = null; //          breakdown with freshly pulled gauges. `shown` is what the toggle reads.
+let openName = null; // which member the dialog is showing — the footer Refresh button's target
 
 // One panel, two views. When the parser failed they are the same text, so the toggle is hidden
 // rather than offering a switch that changes nothing.
@@ -412,26 +450,25 @@ function fillDetail(p) {
     p.ok && !raw ? memberHtml(p.data) : `<pre class="raw">${esc(p.raw.trim() || "(empty)")}</pre>`;
 }
 
-$("pool").addEventListener("click", async (e) => {
-  const btn = e.target.closest("button.detail");
-  if (!btn) return;
-  const name = btn.dataset.name;
-
-  // Open first, fill second: the request can take a second, and a button that does nothing until
-  // then reads as broken.
-  $("detail-name").textContent = name;
-  dlg.querySelector(".plan").textContent = "";
-  rawBtn.setAttribute("aria-pressed", "false");
-  rawBtn.textContent = "show raw";
-  rawBtn.hidden = true;
-  dlg.querySelector(".body").innerHTML = `<p class="note">loading…</p>`;
-  dlg.showModal();
-
+// Fetch (or reuse) one member's breakdown and paint the dialog from it. Both the open click and the
+// footer's Refresh come through here; `fresh` is the only difference between them, and it bypasses
+// BOTH caches — the details Map above, and the 60s capture cache behind /api/pool/member.
+//
+// Refreshing one member cannot refresh their Pool card: the gauges there come from `pool members`,
+// which is one command for the whole list. So this deliberately leaves the cards alone, and the
+// dialog ends up newer than the card behind it.
+async function showMember(name, fresh) {
+  // Also covers the open path, so Refresh cannot fire while the first fetch is still in flight —
+  // the same one-button guard #refresh gives load().
+  refreshBtn.disabled = true;
+  refreshBtn.textContent = "refreshing…";
   try {
-    if (!details.has(name)) {
-      const r = await fetch(`/api/pool/member?name=${encodeURIComponent(name)}`);
+    if (fresh || !details.has(name)) {
+      const r = await fetch(`/api/pool/member?name=${encodeURIComponent(name)}${fresh ? "&fresh=1" : ""}`);
       const p = await r.json();
       if (!r.ok) throw new Error(p.error || `HTTP ${r.status}`);
+      // Overwrites on the fresh path, so closing and reopening shows the refreshed numbers rather
+      // than reverting to the ones Refresh was pressed to get rid of.
       details.set(name, p);
     }
     shown = details.get(name);
@@ -442,12 +479,41 @@ $("pool").addEventListener("click", async (e) => {
       : "";
     fillDetail(shown);
   } catch (err) {
-    // Close rather than leave an empty modal in the way of the toast that explains why.
-    shown = null;
-    dlg.close();
+    // A failed REFRESH keeps what is already on screen: those numbers are stale, not wrong, and
+    // closing would take away the breakdown someone was reading. A failed OPEN has nothing to keep,
+    // so it still closes rather than leave an empty modal in the way of the toast explaining why.
+    if (!fresh) {
+      shown = null;
+      dlg.close();
+    }
     toast(err.message, true);
+  } finally {
+    refreshBtn.disabled = false;
+    refreshBtn.textContent = "↻ Refresh";
   }
+}
+
+$("pool").addEventListener("click", (e) => {
+  const btn = e.target.closest("button.detail");
+  if (!btn) return;
+  openName = btn.dataset.name;
+
+  // Open first, fill second: the request can take a second, and a button that does nothing until
+  // then reads as broken.
+  $("detail-name").textContent = openName;
+  dlg.querySelector(".plan").textContent = "";
+  rawBtn.setAttribute("aria-pressed", "false");
+  rawBtn.textContent = "show raw";
+  rawBtn.hidden = true;
+  dlg.querySelector(".body").innerHTML = `<p class="note">loading…</p>`;
+  dlg.showModal();
+
+  showMember(openName, false);
 });
+
+// Direct listener, not delegated: this button is markup in index.html, so unlike the cards it
+// outlives every innerHTML pass — same as #refresh and #mine.
+refreshBtn.addEventListener("click", () => openName && showMember(openName, true));
 
 rawBtn.addEventListener("click", () => {
   const raw = rawBtn.getAttribute("aria-pressed") !== "true";
@@ -464,8 +530,8 @@ dlg.addEventListener("click", (e) => {
 
 // ---------- switch ----------
 // ---------- confirm ----------
-// Both writes ask first. See index.html for how Enter, Esc and the two buttons all work with no key
-// handler; `close` is the one event all four exits funnel through, so one listener reads them all.
+// Every write asks first. See index.html for how Enter, Esc and the two buttons all work with no
+// key handler; `close` is the one event all four exits funnel through, so one listener reads them all.
 const cdlg = $("confirm");
 const ask = (title, body, go) =>
   new Promise((resolve) => {
@@ -483,9 +549,11 @@ const ask = (title, body, go) =>
   });
 
 // `switch` moves this machine between your OWN saved accounts. `pool use` points your traffic at a
-// coworker's token — it spends their limit and lands in their breakdown as "borrowed". Different
-// blast radius, so different words and a different button label; the pool one names the person
-// twice on purpose, because the cost of a mis-click is paid by someone who is not at this keyboard.
+// coworker's token — it spends their limit and lands in their breakdown as "borrowed". `access
+// allow` / `access deny` point the other way: they change what a coworker may do to YOUR account.
+// Different blast radius, so different words and a different button label; the three that involve
+// another person name them on purpose, because the cost of a mis-click is paid by someone who is
+// not at this keyboard.
 const ASK = {
   switch: (n) => [
     "Switch account?",
@@ -497,39 +565,83 @@ const ASK = {
     `Routes your Claude traffic through ${n}’s token instead of your own. Your usage counts against their limit and shows up as “borrowed” in their pool breakdown.`,
     "Borrow quota",
   ],
+  // The direction reverses here: these two spend nothing of yours right now, they decide what
+  // someone else may spend later. So the wording is about the grant, not about traffic.
+  allow: (n) => [
+    `Allow ${n}?`,
+    `Lets ${n} borrow your account through the pool. Their Claude usage will then count against YOUR rate limit.`,
+    "Allow",
+  ],
+  // Named as a cut-off rather than a setting, because that is what it is to the person on the other
+  // end: claudex gives no warning and there is no grace period.
+  deny: (n) => [
+    `Block ${n}?`,
+    `Stops ${n} borrowing your account. If they are running on your token right now, that ends.`,
+    "Block",
+  ],
+  // `start`/`stop` are the odd ones out: no coworker's name anywhere in them. They flip whether
+  // THIS account is currently borrowing from the shared pool via token-swap, reversible any time by
+  // pressing the other one — closer in shape to a settings checkbox than to the four above. Kept
+  // behind the same confirm dialog anyway, because the pool being borrowed from is still shared
+  // capacity, not a resource this account owns outright.
+  start: () => [
+    "Start pool?",
+    "Turns on token-swap: this account's Claude traffic routes through the shared pool token instead of its own. Reversible any time with Stop pool.",
+    "Start",
+  ],
+  stop: () => [
+    "Stop pool?",
+    "Turns token-swap off. This account's traffic goes back to using its own token.",
+    "Stop",
+  ],
 };
 
-// The only two writes this page can make: `claudex switch <account>` from a Usage card and
-// `claudex pool use <member>` from a Pool card. Delegated on <main> rather than per button for the
-// reason given above — load() replaces every card via innerHTML, dropping element listeners. One
-// listener covers both panels; the pool detail listener above stays separate because it opens a
-// dialog and shares nothing with this.
+// Where each kind posts to, what it sends, and what to say when it lands. Split from ASK so that
+// map's note about blast radius stays readable, and kept as a table because the four rows differ in
+// exactly these three values and nothing else. Any new write is a row here plus a row in ASK.
+const FIRE = {
+  switch: (n) => ["/api/switch", { name: n }, `switched to ${n}`],
+  pool: (n) => ["/api/pool/use", { name: n }, `switched to ${n}`],
+  allow: (n) => ["/api/access", { name: n, action: "allow" }, `${n} allowed`],
+  deny: (n) => ["/api/access", { name: n, action: "deny" }, `${n} blocked`],
+  // Done-messages echo the exact words statusHtml() renders on the Health pill ("consuming
+  // on"/"consuming off"), so the toast previews exactly what that tab shows after load(true) re-runs.
+  start: () => ["/api/pool/toggle", { action: "start" }, "consuming on"],
+  stop: () => ["/api/pool/toggle", { action: "stop" }, "consuming off"],
+};
+
+// Every write this page can make: `claudex switch <account>` from a Usage card, `claudex pool use
+// <member>` from a Pool card, and `claudex access allow|deny <name>` from an Access row. Delegated
+// on <main> rather than per button for the reason given above — load() replaces every panel via
+// innerHTML, dropping element listeners. One listener covers all three panels; the pool detail
+// listener above stays separate because it opens a dialog and shares nothing with this.
 //
 // A function rather than the listener body because the header's "Switch to mine" needs exactly this
 // sequence but sits OUTSIDE <main>, so the delegation below can never reach it.
-async function doSwitch(btn, kind, name) {
+async function doAction(btn, kind, name) {
   // Ask BEFORE touching the button, for two reasons. A cancelled confirm has to leave the page
   // exactly as it was, and showModal() records whatever is focused as its return target — disabling
   // first would move focus to <body>, so Cancel would dump the user at the top of the page instead
   // of back on this button. The dialog is modal, so the button is unclickable meanwhile regardless.
   if (!(await ask(...ASK[kind](name)))) return;
 
+  const [url, body, done] = FIRE[kind](name);
   const label = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "switching…";
+  btn.textContent = "working…";
   try {
-    const r = await fetch(kind === "pool" ? "/api/pool/use" : "/api/switch", {
+    const r = await fetch(url, {
       method: "POST",
       // Not decoration: the server rejects anything else, which is what forces a CORS preflight on
       // a cross-origin caller and keeps another page in this browser from switching your account.
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(body),
     });
     const d = await r.json();
     // claudex's own output beats a message we made up — it says why far better than we can.
     if (!r.ok || !d.ok) throw new Error(d.error || d.raw || `HTTP ${r.status}`);
     // Unkeyed on purpose: load() below clears only keyed toasts, so this survives the re-render.
-    toast(`switched to ${name}`);
+    toast(done);
     // No need to restore the button: this re-renders every card, so the green tint and the disabled
     // state both move to wherever they now belong.
     await load(true);
@@ -540,9 +652,12 @@ async function doSwitch(btn, kind, name) {
   }
 }
 
+// Matched on data-kind rather than a class: an Access row's button is not a "switch" by any reading,
+// and FIRE is already keyed on exactly this attribute. Nothing else inside <main> carries one — the
+// confirm dialog's Cancel/Confirm live outside it for that reason (see index.html).
 document.querySelector("main").addEventListener("click", (e) => {
-  const btn = e.target.closest("button.switch");
-  if (btn) doSwitch(btn, btn.dataset.kind, btn.dataset.name);
+  const btn = e.target.closest("button[data-kind]");
+  if (btn) doAction(btn, btn.dataset.kind, btn.dataset.name);
 });
 
 // ---------- switch to mine ----------
@@ -567,7 +682,25 @@ function updateMine() {
 
 // Direct listener, not delegated: like #refresh, this button outlives every innerHTML pass.
 $("mine").addEventListener("click", (e) =>
-  doSwitch(e.currentTarget, e.currentTarget.dataset.kind, e.currentTarget.dataset.name)
+  doAction(e.currentTarget, e.currentTarget.dataset.kind, e.currentTarget.dataset.name)
+);
+
+// Same reasoning as updateMine(), one field simpler: no tab/namespace to pick between, and no
+// dataset.name (pool start/pool stop take no argument at all).
+function updateConsuming() {
+  const btn = $("consuming");
+  const t = consumingTarget(last);
+  if (!t && !btn.hidden && document.activeElement === btn) $("refresh").focus();
+  btn.hidden = !t;
+  if (!t) return;
+  btn.dataset.kind = t.kind;
+  btn.textContent = t.label;
+  btn.title = t.kind === "start" ? "start borrowing from the pool" : "stop borrowing from the pool";
+}
+
+// Direct listener, not delegated: like #mine and #refresh, this button outlives every innerHTML pass.
+$("consuming").addEventListener("click", (e) =>
+  doAction(e.currentTarget, e.currentTarget.dataset.kind, e.currentTarget.dataset.name)
 );
 
 addEventListener("hashchange", () => show(fromHash()));

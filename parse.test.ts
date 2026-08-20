@@ -4,7 +4,7 @@
 import { test, expect } from "bun:test";
 import {
   parseUsage, parseList, parseCurrent, parsePoolStatus, parseDoctor, parsePoolMembers,
-  parseMemberDetail,
+  parseMemberDetail, parseAccess,
 } from "./src/parse.ts";
 
 const fx = (n: string) => Bun.file(`${import.meta.dir}/fixtures/${n}.txt`).text();
@@ -96,6 +96,23 @@ test("pool member: flows, drivers, and the stale-headroom shape", async () => {
   expect(s.netM).toBe(-1137.3); // U+2212 minus, not NaN
 });
 
+test("access: 8 people, one blocked", async () => {
+  const p = parseAccess(await fx("access"))!;
+  expect(p).toHaveLength(8);
+  expect(p.filter((x) => !x.allowed).map((x) => x.name)).toEqual(["hugo.vandenberge"]);
+  expect(p[0]).toEqual({ name: "alice.stoneham", allowed: true });
+});
+
+// The one parser here that must NOT return null on an empty list: nobody on your access list is an
+// ordinary state, and a raw-text fallback there would flag a healthy panel as broken.
+test("access: recognised but empty box is [], not null", () => {
+  const empty = [
+    "╭─ Access to your account ─────── 0 people ─╮",
+    "╰───────────────────────────────────────────╯",
+  ].join("\n");
+  expect(parseAccess(empty)).toEqual([]);
+});
+
 test("garbage in -> null out, so the server falls back to raw text", async () => {
   const cat = "  ( ^_^ )  'usage --json' isn't a thing, but you typed it with such confidence!";
   expect(parseUsage(cat)).toBeNull();
@@ -105,10 +122,17 @@ test("garbage in -> null out, so the server falls back to raw text", async () =>
   expect(parsePoolStatus("")).toBeNull();
   expect(parseDoctor("")).toBeNull();
   expect(parseMemberDetail(cat)).toBeNull();
+  expect(parseAccess(cat)).toBeNull();
+  expect(parseAccess("")).toBeNull();
   // a `list` table must not be accepted as a `usage` table, and vice versa
   expect(parseUsage(await fx("list"))).toBeNull();
   expect(parseList(await fx("usage"))).toBeNull();
   // `pool members` and `pool member` are the closest pair here — neither may pass as the other
   expect(parseMemberDetail(await fx("pool-members"))).toBeNull();
   expect(parsePoolMembers(await fx("pool-member"))).toBeNull();
+  // `access` and `pool members` are both dotted-name lists — crossing them would feed `access
+  // allow` a name from the wrong namespace, which is the whole reason each has its own gate.
+  expect(parseAccess(await fx("pool-members"))).toBeNull();
+  expect(parsePoolMembers(await fx("access"))).toBeNull();
+  expect(parseList(await fx("access"))).toBeNull();
 });

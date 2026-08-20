@@ -1,7 +1,8 @@
 # claudex-dash
 
-A local web view of your `claudex` state — usage, pool, accounts, health — with two buttons that
-can change which account you're on.
+A local web view of your `claudex` state — usage, pool, accounts, access, health — with buttons to
+switch which account you're on, control who may borrow it, and toggle whether you're borrowing from
+the pool.
 
 ```
 curl -fsSL https://raw.githubusercontent.com/aditya-thummar-devx/claudex-dash/main/bootstrap.sh | bash
@@ -26,27 +27,41 @@ Bun is installed for you. macOS.
 | **Usage** | Your saved accounts, with session and weekly gauges. |
 | **Pool** | Everyone in the pool, their headroom, and their net give/take. "View Details" opens one person's own / borrowed / shared breakdown. |
 | **Accounts** | The saved account table — email, org, plan, when it was last saved. |
+| **Access** | Who may borrow *your* account through the pool, and whether each is allowed or blocked. |
 | **Health** | `pool status` and `doctor` — what's on, what's wired, what's failing. |
 
 Everything on Usage / Pool can be sorted, and filtered to Max 5x accounts only.
 
 ## What it can change
 
-Two things, each behind a confirmation:
+Four things, each behind a confirmation:
 
 - **Switch** on a Usage card → `claudex switch <account> --force`. Moves this machine between your
   own saved accounts.
 - **Switch** on a Pool card → `claudex pool use <member>`. Points your traffic at a coworker's
   token. Your usage counts against *their* limit and shows up as "borrowed" in their breakdown.
   This is the one worth reading the dialog for.
+- **Allow / Deny** on an Access row → `claudex access allow|deny <name>`. Decides who may borrow
+  *your* account. Allowing someone means their usage counts against your rate limit; denying someone
+  who is running on your token right now cuts them off with no warning. Each row shows only the
+  button that would change something.
+- **Start pool / Stop pool** in the header → `claudex pool start` / `claudex pool stop`. Toggles
+  whether this account is currently borrowing from the shared pool (token-swap) instead of using its
+  own token. Only ever affects this account, and it's reversible any time by pressing the other one.
 
 Enter confirms, Esc cancels.
 
 Everything else is read-only, and the command allowlist is enforced in code
 (`src/claudex-dash.ts`). It will never run: `login` · `add` · `remove` · `rename` ·
-`pool start/stop/join` · `access` · `sessions share/pull` · `keep-warm` · `refresh` ·
-`autoswitch` · `update`. Those create or destroy profiles, move tokens between people, or change
-who may borrow your account — none of them belong behind a button on a web page.
+`pool join` · `access remove` · `sessions share/pull` · `keep-warm` · `refresh` ·
+`autoswitch` · `update`. Those create or destroy profiles, move tokens between people, or erase
+someone from your access list with no way back from a web page — none of them belong behind a button.
+
+`access remove` is the odd one on that list: `access` itself *is* reachable, because reading the list
+and flipping a row between allowed and blocked are both recoverable from the page you did them on.
+Removing a person is not — you'd need the terminal to put them back — so only `allow` and `deny` are
+wired up, and the two verbs are a literal union in the code rather than a value passed through from
+the request.
 
 ## Privacy
 
@@ -70,7 +85,7 @@ CLAUDEX_BIN=/path/to/claudex bun run server.ts
 `claudex` is found at `~/.local/bin`, Homebrew, `/usr/local/bin`, or on `PATH` — `CLAUDEX_BIN` is
 only needed if yours lives somewhere else.
 
-Reads are cached for 60s. ↻ Refresh forces a fresh capture, and so does either Switch.
+Reads are cached for 60s. ↻ Refresh forces a fresh capture, and so does any of the four write buttons.
 
 ## If a panel shows raw terminal text
 
