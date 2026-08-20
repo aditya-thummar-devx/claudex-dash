@@ -38,7 +38,7 @@ const TTL_MS = 60_000;
 // argv, and spawn runs without a shell.
 //
 // NEVER add: login · add · remove · rename · pool join
-//            sessions share/pull · keep-warm · refresh · autoswitch · update · access remove
+//            sessions share/pull · keep-warm · refresh · autoswitch run · update · access remove
 // Those create or destroy profiles, move tokens between people, or erase someone from your access
 // list with no way back from a web page. None of them belong behind a button.
 //
@@ -51,6 +51,12 @@ const TTL_MS = 60_000;
 // what they flip is a boolean on THIS account. `pool join` stays banned: it is the one-way step of
 // enrolling this account in a pool for the first time, and that still doesn't belong behind a
 // button. See poolStart()/poolStop() below.
+//
+// `autoswitch on`/`autoswitch off` used to be banned wholesale too, for the same reason: no argument
+// beyond a fixed on/off, so no coworker's name to check — what it flips is a setting on THIS account,
+// reversible any time by pressing the other one. `autoswitch run` stays banned: it is a one-shot
+// manual trigger that can switch the active account right now, not a persisted setting, and that
+// still doesn't belong behind a button. See autoswitchOn()/autoswitchOff() below.
 //
 // Four commands live OUTSIDE this table because they take an argument:
 //   `pool member <name>`        (read-only)  — captureMember()
@@ -182,3 +188,9 @@ export const accessSet = (name: string, verb: "allow" | "deny") => action(["acce
 // flag now and breaking the command outright.
 export const poolStart = () => action(["pool", "start"]);
 export const poolStop = () => action(["pool", "stop"]);
+
+// Same reasoning as poolStart/poolStop above: no coworker's name, a boolean on this account only,
+// shipped without --force because whether autoswitch on/off ever prompts is unverified (closed
+// source). If one hangs to ACTION_TIMEOUT_MS on first real use, add the equivalent flag then.
+export const autoswitchOn = () => action(["autoswitch", "on"]);
+export const autoswitchOff = () => action(["autoswitch", "off"]);

@@ -34,7 +34,7 @@ Everything on Usage / Pool can be sorted, and filtered to Max 5x accounts only.
 
 ## What it can change
 
-Four things, each behind a confirmation:
+Five things, each behind a confirmation:
 
 - **Switch** on a Usage card → `claudex switch <account> --force`. Moves this machine between your
   own saved accounts.
@@ -48,13 +48,16 @@ Four things, each behind a confirmation:
 - **Start pool / Stop pool** in the header → `claudex pool start` / `claudex pool stop`. Toggles
   whether this account is currently borrowing from the shared pool (token-swap) instead of using its
   own token. Only ever affects this account, and it's reversible any time by pressing the other one.
+- **Enable / Disable autoswitch** in the header → `claudex autoswitch on` / `claudex autoswitch off`.
+  Toggles whether claudex automatically switches your active account when usage gets high. Only ever
+  affects this account, and it's reversible any time by pressing the other one.
 
 Enter confirms, Esc cancels.
 
 Everything else is read-only, and the command allowlist is enforced in code
 (`src/claudex-dash.ts`). It will never run: `login` · `add` · `remove` · `rename` ·
 `pool join` · `access remove` · `sessions share/pull` · `keep-warm` · `refresh` ·
-`autoswitch` · `update`. Those create or destroy profiles, move tokens between people, or erase
+`autoswitch run` · `update`. Those create or destroy profiles, move tokens between people, or erase
 someone from your access list with no way back from a web page — none of them belong behind a button.
 
 `access remove` is the odd one on that list: `access` itself *is* reachable, because reading the list

@@ -1,17 +1,19 @@
-// claudex-dash — a web view of claudex state, with four actions.
+// claudex-dash — a web view of claudex state, with five actions.
 //
 // Six API routes plus static files. Two GETs compose the panels from seven CLI captures; each panel
 // carries both parsed data and the raw text it came from, so a parser that stops recognising
 // claudex's output degrades that panel to plain text instead of showing wrong numbers.
 //
-// Four POSTs back the page's buttons: `claudex switch`, `claudex pool use`,
-// `claudex access allow|deny`, and `claudex pool start|stop`. They are the only routes that change
-// anything, and they are held to the same rules — same-origin only, JSON content type only, and —
-// for the three that take one — a name that claudex itself already listed, in the namespace of the
-// command about to receive it. The fourth takes no name at all; see the POSTS table below.
+// Five POSTs back the page's buttons: `claudex switch`, `claudex pool use`,
+// `claudex access allow|deny`, `claudex pool start|stop`, and `claudex autoswitch on|off`. They are
+// the only routes that change anything, and they are held to the same rules — same-origin only, JSON
+// content type only, and — for the three that take one — a name that claudex itself already listed,
+// in the namespace of the command about to receive it. The other two take no name at all; see the
+// POSTS table below.
 import { join } from "node:path";
 import {
   captureAll, captureMember, switchAccount, poolUse, accessSet, poolStart, poolStop,
+  autoswitchOn, autoswitchOff,
 } from "./src/claudex-dash.ts";
 import type { Capture } from "./src/claudex-dash.ts";
 import { sameOrigin } from "./src/guard.ts";
@@ -62,14 +64,15 @@ function pair(a: Capture, b: Capture, data: unknown): Panel {
 // Both spellings of this machine — see src/guard.ts for why refusing one buys nothing.
 const ORIGINS = [`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`];
 
-// The four mutating routes, one row each. A table rather than branches because the rows must be
+// The five mutating routes, one row each. A table rather than branches because the rows must be
 // read side by side: each names the list its `name` has to appear in, and those lists are DIFFERENT
 // NAMESPACES that must never be crossed. `switch` wants the short profile name from `claudex list`
 // ("brian"); `pool use` wants the dotted pool name from `claudex pool members` ("alice.stoneham");
 // `access allow|deny` wants a dotted name too, but off `claudex access` — a separate list that
 // merely looks like the pool one. Validating each against its own source enforces all of that for
-// free, and puts the pairing somewhere it can be checked at a glance. `pool start|stop` carries no
-// name at all — `known: null` marks a route as having nobody to check, see the handler below.
+// free, and puts the pairing somewhere it can be checked at a glance. `pool start|stop` and
+// `autoswitch on|off` carry no name at all — `known: null` marks a route as having nobody to check,
+// see the handler below.
 const POSTS = {
   "/api/switch": {
     known: (c: Record<string, Capture>) => parseList(c.list.raw)?.map((a) => a.account),
@@ -93,6 +96,13 @@ const POSTS = {
     known: null,
     verbs: ["start", "stop"] as const,
     run: (_name: string, verb: "start" | "stop") => (verb === "start" ? poolStart() : poolStop()),
+  },
+  "/api/autoswitch/toggle": {
+    // Same shape as /api/pool/toggle: autoswitch on/off take no argument, they flip THIS account's
+    // own setting.
+    known: null,
+    verbs: ["on", "off"] as const,
+    run: (_name: string, verb: "on" | "off") => (verb === "on" ? autoswitchOn() : autoswitchOff()),
   },
 } as const;
 
@@ -156,12 +166,12 @@ const config = {
     }
 
     // ---- the mutating routes ----
-    // Everything above this point only reads. These four change something — which account is
-    // logged in, who may borrow this one, or whether it is currently borrowing from the pool — so
-    // they carry the guards the GETs do not need: a same-origin check (see src/guard.ts — localhost
-    // is reachable from any page in this browser), a JSON content type (which forces a CORS
-    // preflight this server never answers), and — for the three that take a name — the same gate as
-    // /api/pool/member above.
+    // Everything above this point only reads. These five change something — which account is
+    // logged in, who may borrow this one, whether it is currently borrowing from the pool, or
+    // whether it auto-switches on high usage — so they carry the guards the GETs do not need: a
+    // same-origin check (see src/guard.ts — localhost is reachable from any page in this browser), a
+    // JSON content type (which forces a CORS preflight this server never answers), and — for the
+    // three that take a name — the same gate as /api/pool/member above.
     if (req.method === "POST" && url.pathname in POSTS) {
       if (!sameOrigin(req.headers.get("origin"), ORIGINS)) {
         return Response.json({ error: "bad origin" }, { status: 403 });
@@ -172,9 +182,10 @@ const config = {
       const body = await req.json().catch(() => null);
       const route = POSTS[url.pathname as keyof typeof POSTS];
 
-      // Not every route takes a name — /api/pool/toggle flips a boolean with nobody to name — so
-      // `known: null` is how a row opts out of this gate rather than pretending an empty list means
-      // "nobody is valid". Uses the cached captures, so the gate normally costs nothing.
+      // Not every route takes a name — /api/pool/toggle and /api/autoswitch/toggle each flip a
+      // boolean with nobody to name — so `known: null` is how a row opts out of this gate rather
+      // than pretending an empty list means "nobody is valid". Uses the cached captures, so the gate
+      // normally costs nothing.
       let name = "";
       if (route.known) {
         name = typeof body?.name === "string" ? body.name : "";
@@ -186,11 +197,11 @@ const config = {
         if (!known.includes(name)) return Response.json({ error: "unknown name" }, { status: 400 });
       }
 
-      // /api/access and /api/pool/toggle carry a second field, the verb claudex will run. Checked
-      // against a two-item literal rather than passed through — for /api/access that's what puts
-      // `access remove` out of reach of anything arriving over the wire (accessSet() narrows to the
-      // same two, so this is the outer half of one guarantee rather than a lone check). An absent
-      // or unrecognised verb is a 400, never a default.
+      // /api/access, /api/pool/toggle, and /api/autoswitch/toggle each carry a second field, the
+      // verb claudex will run. Checked against a two-item literal rather than passed through — for
+      // /api/access that's what puts `access remove` out of reach of anything arriving over the wire
+      // (accessSet() narrows to the same two, so this is the outer half of one guarantee rather than
+      // a lone check). An absent or unrecognised verb is a 400, never a default.
       const verb = body?.action;
       if (route.verbs && !route.verbs.includes(verb)) {
         return Response.json({ error: "unknown action" }, { status: 400 });

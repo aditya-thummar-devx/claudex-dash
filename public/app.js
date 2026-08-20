@@ -5,6 +5,7 @@
 import { arrange, SORTS } from "./sort.js";
 import { mineTarget } from "./mine.js";
 import { consumingTarget } from "./consuming.js";
+import { autoswitchTarget } from "./autoswitch.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) =>
@@ -335,6 +336,7 @@ function paint() {
   }
   updateMine();
   updateConsuming();
+  updateAutoswitch();
 }
 
 async function load(fresh) {
@@ -594,6 +596,18 @@ const ASK = {
     "Turns token-swap off. This account's traffic goes back to using its own token.",
     "Stop",
   ],
+  // Same shape as start/stop: no coworker's name, a setting on this account only, reversible any
+  // time by pressing the other one.
+  on: () => [
+    "Enable autoswitch?",
+    "Claudex will automatically switch your active account when usage gets high, using whatever threshold/strategy is currently configured. Runs unattended — no dashboard confirmation per switch. Reversible any time with Disable autoswitch.",
+    "Enable",
+  ],
+  off: () => [
+    "Disable autoswitch?",
+    "Turns off automatic account switching. You'll switch accounts yourself when usage gets high.",
+    "Disable",
+  ],
 };
 
 // Where each kind posts to, what it sends, and what to say when it lands. Split from ASK so that
@@ -608,6 +622,8 @@ const FIRE = {
   // on"/"consuming off"), so the toast previews exactly what that tab shows after load(true) re-runs.
   start: () => ["/api/pool/toggle", { action: "start" }, "consuming on"],
   stop: () => ["/api/pool/toggle", { action: "stop" }, "consuming off"],
+  on: () => ["/api/autoswitch/toggle", { action: "on" }, "autoswitch on"],
+  off: () => ["/api/autoswitch/toggle", { action: "off" }, "autoswitch off"],
 };
 
 // Every write this page can make: `claudex switch <account>` from a Usage card, `claudex pool use
@@ -642,9 +658,14 @@ async function doAction(btn, kind, name) {
     if (!r.ok || !d.ok) throw new Error(d.error || d.raw || `HTTP ${r.status}`);
     // Unkeyed on purpose: load() below clears only keyed toasts, so this survives the re-render.
     toast(done);
-    // No need to restore the button: this re-renders every card, so the green tint and the disabled
-    // state both move to wherever they now belong.
     await load(true);
+    // For a panel button (switch/pool/allow/deny) this re-render already replaced btn's whole card
+    // via innerHTML, so this line touches an orphaned node and does nothing visible — harmless. For
+    // #mine/#consuming/#autoswitch, which live outside <main> and are updated in place rather than
+    // recreated (see updateMine/updateConsuming/updateAutoswitch), this is the ONLY place their
+    // .disabled ever gets cleared after a success. Without it, the first successful click on any of
+    // those three disables them for good — paint() relabels the button but never re-enables it.
+    btn.disabled = false;
   } catch (err) {
     toast(err.message, true);
     btn.disabled = false;
@@ -700,6 +721,24 @@ function updateConsuming() {
 
 // Direct listener, not delegated: like #mine and #refresh, this button outlives every innerHTML pass.
 $("consuming").addEventListener("click", (e) =>
+  doAction(e.currentTarget, e.currentTarget.dataset.kind, e.currentTarget.dataset.name)
+);
+
+// Same reasoning as updateConsuming(): no dataset.name (autoswitch on/off take no argument either),
+// reads the doctor row via autoswitchTarget() instead of the pool status block.
+function updateAutoswitch() {
+  const btn = $("autoswitch");
+  const t = autoswitchTarget(last);
+  if (!t && !btn.hidden && document.activeElement === btn) $("refresh").focus();
+  btn.hidden = !t;
+  if (!t) return;
+  btn.dataset.kind = t.kind;
+  btn.textContent = t.label;
+  btn.title = t.kind === "on" ? "enable automatic account switching" : "disable automatic account switching";
+}
+
+// Direct listener, not delegated: like #mine and #refresh, this button outlives every innerHTML pass.
+$("autoswitch").addEventListener("click", (e) =>
   doAction(e.currentTarget, e.currentTarget.dataset.kind, e.currentTarget.dataset.name)
 );
 

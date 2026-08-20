@@ -32,14 +32,18 @@
     <label><input type="checkbox" id="only5x" /> 5x only</label>
     <select id="sort" aria-label="Sort accounts"></select>
   </div>
-  <!-- Both of the next two buttons must stay before #refresh: #refresh owns this row's
+  <!-- All three of the next buttons must stay before #refresh: #refresh owns this row's
        margin-left:auto (styles.css) and a second auto margin would split the slack between them.
-       Both are hidden until app.js has something for them to do. -->
+       All three are hidden until app.js has something for them to do. -->
   <button id="mine" hidden>Switch to mine</button>
   <!-- Pool start/stop toggle: carries no data-name (pool start/pool stop take no argument) — just
        data-kind ("start"/"stop"), set by updateConsuming() in app.js from consuming.js. Ships with
        no text: always populated before it's ever un-hidden. -->
   <button id="consuming" hidden></button>
+  <!-- Autoswitch toggle: carries no data-name (autoswitch on/off take no argument) — just
+       data-kind ("on"/"off"), set by updateAutoswitch() in app.js from autoswitch.js. Ships with
+       no text: always populated before it's ever un-hidden. -->
+  <button id="autoswitch" hidden></button>
   <button id="refresh">↻ Refresh</button>
   <span class="age" id="age"></span>
 </header>
