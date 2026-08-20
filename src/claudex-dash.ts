@@ -83,7 +83,13 @@ export type CommandKey = keyof typeof COMMANDS;
 // a mutating command has no parser, so the code is the only success signal it gets.
 function run(args: readonly string[], timeoutMs = TIMEOUT_MS): Promise<{ out: string; code: number }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(BIN, [...args], { stdio: ["ignore", "pipe", "pipe"], shell: false });
+    // launchd's env has no LANG/LC_ALL, so Python's stdout defaults to ascii and crashes the moment
+    // claudex prints a non-ascii char (e.g. '·' in the usage table). Force utf-8 regardless of locale.
+    const child = spawn(BIN, [...args], {
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: false,
+      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+    });
     let out = "";
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
