@@ -20,6 +20,12 @@ bun run restart      # restart it (after a git pull, say)
 bun run uninstall    # stop it and remove the login agent
 ```
 
+No repo on hand? Same effect, no clone or Bun needed:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/aditya-thummar-devx/claudex-dash/main/uninstall.sh | bash
+```
+
 If port 4400 is already taken by something else, the agent will retry every 10s and log the busy
 port each time — `bun run uninstall`, then re-run the install line with `PORT=4500`.
 
