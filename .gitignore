@@ -7,3 +7,4 @@ fixtures.local/
 node_modules/
 bun.lock
 .DS_Store
+launchd.log

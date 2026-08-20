@@ -11,7 +11,17 @@ curl -fsSL https://raw.githubusercontent.com/aditya-thummar-devx/claudex-dash/ma
 That installs Bun if you don't have it, clones to `~/tools/claudex-dash`, pulls the latest, and
 opens <http://127.0.0.1:4400>. Re-run the same line any time — it updates in place.
 
-**The server runs in the foreground.** Ctrl-C stops it, and closing the terminal stops it too.
+**It keeps running.** The install registers a launchd user agent (`com.claudex-dash`), so the server
+starts again on every login and restarts by itself if it crashes. Closing the terminal doesn't stop
+it. Output goes to `launchd.log` in the repo folder.
+
+```sh
+bun run restart      # restart it (after a git pull, say)
+bun run uninstall    # stop it and remove the login agent
+```
+
+If port 4400 is already taken by something else, the agent will retry every 10s and log the busy
+port each time — `bun run uninstall`, then re-run the install line with `PORT=4500`.
 
 ## What you need first
 
