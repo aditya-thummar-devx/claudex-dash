@@ -1,0 +1,16 @@
+# main is the distribution channel — bootstrap.sh clones and runs it — so a broken parser on main
+# breaks every install. This gate is the only thing between a bad push and that.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun test # no bun install: this project has no dependencies
