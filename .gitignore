@@ -1,6 +1,7 @@
-# Real captured CLI output — coworkers' email addresses, names and usage figures.
-# The sanitized copies in fixtures/ are what the tests actually run against and what ships;
-# this directory is the original capture and must never leave this machine.
+# Real captures now live OUTSIDE this repo, in ~/.claudex-dash-captures/ — they hold coworkers'
+# email addresses, names, usage figures and an internal API URL. Out of tree because gitignore only
+# stops git: a zip, tar, npm pack or directory scan of this folder would happily sweep them up.
+# This rule stays as a backstop for anyone who recreates the directory out of habit.
 fixtures.local/
 
 node_modules/

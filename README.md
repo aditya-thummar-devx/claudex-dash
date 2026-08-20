@@ -71,8 +71,9 @@ the request.
 - Binds `127.0.0.1` only. Not reachable from another machine.
 - Sends nothing anywhere. No telemetry, no analytics, no phone-home — the only network calls the
   install makes are to github.com, and to bun.sh the first time.
-- The fixtures committed to this repo are fabricated. Real captures stay in `fixtures.local/`,
-  which is gitignored.
+- The fixtures committed to this repo are fabricated. Real captures stay outside the repo
+  entirely, in `~/.claudex-dash-captures/` — nothing in this tree reads them, so a stray `zip`,
+  `tar` or `git add -f` can't sweep them up.
 - **Do not add CORS headers to `server.ts`.** The Pool panel serves coworkers' email addresses, and
   the *absence* of `Access-Control-Allow-Origin` is what stops another tab in your browser from
   reading it. There's a longer note at the route itself.
@@ -109,5 +110,6 @@ bun test
 
 `fixtures/` holds sanitized captures of real `claudex` output, and the tests parse them. They exist
 to fail loudly when claudex changes its table layout. If you regenerate them from your own machine,
-put the originals in `fixtures.local/` and scrub names, emails, paths and internal URLs before
-anything lands in `fixtures/`.
+keep the originals outside this repo (`~/.claudex-dash-captures/`) and scrub names, emails, paths
+and internal URLs before anything lands in `fixtures/`. Don't symlink that directory back in —
+archives and directory scans follow symlinks, which defeats the point of keeping it out of tree.
