@@ -6,7 +6,8 @@
   "scripts": {
     "start": "bun run server.ts",
     "restart": "launchctl kickstart -k \"gui/$(id -u)/com.claudex-dash\"",
-    "uninstall": "launchctl bootout \"gui/$(id -u)/com.claudex-dash\" 2>/dev/null; rm -f \"$HOME/Library/LaunchAgents/com.claudex-dash.plist\"; echo '✓ agent removed — it will not start on login any more.'",
+    "update": "bash update.sh",
+    "uninstall": "launchctl bootout \"gui/$(id -u)/com.claudex-dash\" 2>/dev/null; launchctl bootout \"gui/$(id -u)/com.claudex-dash.updater\" 2>/dev/null; rm -f \"$HOME/Library/LaunchAgents/com.claudex-dash.plist\" \"$HOME/Library/LaunchAgents/com.claudex-dash.updater.plist\"; echo '✓ agent removed — it will not start on login any more.'",
     "test": "bun test"
   }
 }
