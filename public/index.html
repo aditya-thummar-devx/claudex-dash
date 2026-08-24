@@ -4,6 +4,15 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>claudex-dash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
+<script>
+  try {
+    const p = JSON.parse(localStorage.getItem("claudex-dash:prefs") || "{}");
+    if (p.theme === "scifi") document.documentElement.setAttribute("data-theme", "scifi");
+  } catch (_) {}
+</script>
 <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -46,6 +55,12 @@
   <button id="autoswitch" hidden></button>
   <button id="refresh">↻ Refresh</button>
   <span class="age" id="age"></span>
+  <button id="settings-btn" class="icon-btn" aria-label="Settings" title="Settings">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+    </svg>
+  </button>
 </header>
 <!-- Fixed to the bottom of the viewport (styles.css). Own inert, same reason as #hdr: not
      focusable/clickable until app.js lifts it next to gate.close(). -->
@@ -105,6 +120,21 @@
     <button value="">Cancel</button>
     <button value="go" id="confirm-go" class="bad" autofocus></button>
   </form>
+</dialog>
+<dialog id="settings" aria-labelledby="settings-title">
+  <header class="dlg-h">
+    <span class="name" id="settings-title">Settings</span>
+    <form method="dialog"><button class="close" aria-label="Close">&#10005;</button></form>
+  </header>
+  <div class="body">
+    <div class="setting-row">
+      <label for="theme-select">Theme</label>
+      <select id="theme-select">
+        <option value="default">Default</option>
+        <option value="scifi">Sci-Fi</option>
+      </select>
+    </div>
+  </div>
 </dialog>
 <!-- popover, not a plain div: a popover enters the top layer, so a toast raised while the pool
      detail <dialog> is open still renders above its backdrop. aria-live keeps the announcement the

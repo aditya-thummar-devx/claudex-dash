@@ -750,10 +750,22 @@ show(fromHash());
 $("sort").innerHTML = SORTS.map(([v, label]) => `<option value="${v}">${esc(label)}</option>`).join("");
 
 // ---------------------------------------------------------------------------
-// Saved preferences — sort order and 5x filter are persisted in localStorage
+// Saved preferences — sort order, 5x filter, and theme are persisted in localStorage
 // so they survive page reloads. Key is namespaced to avoid collisions.
 // ---------------------------------------------------------------------------
 const PREFS_KEY = "claudex-dash:prefs";
+
+function setTheme(theme) {
+  if (theme === "scifi") {
+    document.documentElement.setAttribute("data-theme", "scifi");
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+  const sel = $("theme-select");
+  if (sel && sel.value !== theme) {
+    sel.value = theme;
+  }
+}
 
 function loadPrefs() {
   try {
@@ -769,6 +781,9 @@ function loadPrefs() {
     if (typeof p.only5x === "boolean") {
       $("only5x").checked = p.only5x;
     }
+    if (typeof p.theme === "string" && ["default", "scifi"].includes(p.theme)) {
+      setTheme(p.theme);
+    }
   } catch {
     // localStorage unavailable or JSON malformed — silently ignore.
   }
@@ -779,6 +794,7 @@ function savePrefs() {
     localStorage.setItem(PREFS_KEY, JSON.stringify({
       sort: $("sort").value,
       only5x: $("only5x").checked,
+      theme: $("theme-select")?.value || "default",
     }));
   } catch {
     // Private browsing or quota exceeded — silently ignore.
@@ -792,6 +808,15 @@ loadPrefs();
 // Wrap paint() so every sort/filter change is persisted automatically.
 $("sort").addEventListener("change", () => { savePrefs(); paint(); });
 $("only5x").addEventListener("change", () => { savePrefs(); paint(); });
+
+$("settings-btn")?.addEventListener("click", () => $("settings").showModal());
+$("settings")?.addEventListener("click", (e) => {
+  if (e.target === $("settings")) $("settings").close();
+});
+$("theme-select")?.addEventListener("change", (e) => {
+  setTheme(e.target.value);
+  savePrefs();
+});
 
 $("refresh").addEventListener("click", () => load(true));
 load(false);
