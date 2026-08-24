@@ -17,12 +17,18 @@ it. Output goes to `launchd.log` in the repo folder.
 
 ```sh
 bun run restart      # restart it (after a git pull, say)
+bun run update       # pull latest from GitHub and restart
 bun run uninstall    # stop it and remove the login agent
 ```
+
+**Auto-updates.** The install also registers a daily launchd timer (`com.claudex-dash.updater`) that
+runs `update.sh` at 2 PM, pulling the latest code and restarting the server automatically.
+`bun run uninstall` removes both agents.
 
 No repo on hand? Same effect, no clone or Bun needed:
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/aditya-thummar-devx/claudex-dash/main/update.sh | bash
 curl -fsSL https://raw.githubusercontent.com/aditya-thummar-devx/claudex-dash/main/uninstall.sh | bash
 ```
 
