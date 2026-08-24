@@ -748,9 +748,50 @@ history.replaceState(null, "", `#${fromHash()}`); // sync the URL without adding
 show(fromHash());
 
 $("sort").innerHTML = SORTS.map(([v, label]) => `<option value="${v}">${esc(label)}</option>`).join("");
+
+// ---------------------------------------------------------------------------
+// Saved preferences — sort order and 5x filter are persisted in localStorage
+// so they survive page reloads. Key is namespaced to avoid collisions.
+// ---------------------------------------------------------------------------
+const PREFS_KEY = "claudex-dash:prefs";
+
+function loadPrefs() {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    // Validate sort against the known list before applying, so a stale value
+    // from an older build that removed a sort option does not get silently set.
+    const validSorts = SORTS.map(([v]) => v);
+    if (typeof p.sort === "string" && validSorts.includes(p.sort)) {
+      $("sort").value = p.sort;
+    }
+    if (typeof p.only5x === "boolean") {
+      $("only5x").checked = p.only5x;
+    }
+  } catch {
+    // localStorage unavailable or JSON malformed — silently ignore.
+  }
+}
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({
+      sort: $("sort").value,
+      only5x: $("only5x").checked,
+    }));
+  } catch {
+    // Private browsing or quota exceeded — silently ignore.
+  }
+}
+
+// Restore saved prefs before the first paint so the UI never flickers.
+loadPrefs();
+
 // Direct listeners, not delegated: unlike the cards, these elements outlive every innerHTML pass.
-$("sort").addEventListener("change", paint);
-$("only5x").addEventListener("change", paint);
+// Wrap paint() so every sort/filter change is persisted automatically.
+$("sort").addEventListener("change", () => { savePrefs(); paint(); });
+$("only5x").addEventListener("change", () => { savePrefs(); paint(); });
 
 $("refresh").addEventListener("click", () => load(true));
 load(false);
