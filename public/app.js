@@ -406,10 +406,10 @@ function show(name) {
   updateMine(); // the tab decides which of the two commands "switch to mine" would run
 }
 
-// A stale or hand-typed hash must open Usage, not hide every panel.
+// A stale or hand-typed hash must open Pool, not hide every panel.
 const fromHash = () => {
   const h = decodeURIComponent(location.hash.slice(1));
-  return PANELS.includes(h) ? h : PANELS[0];
+  return PANELS.includes(h) ? h : "pool";
 };
 
 // Every tab change goes through the hash, so clicks and browser back/forward share one code path.

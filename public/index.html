@@ -65,8 +65,8 @@
 <!-- Fixed to the bottom of the viewport (styles.css). Own inert, same reason as #hdr: not
      focusable/clickable until app.js lifts it next to gate.close(). -->
 <nav class="tabs" id="tabbar" role="tablist" aria-label="claudex-dash panels" inert>
-  <button role="tab" id="tab-usage"    aria-controls="usage"    aria-selected="true">Usage<span class="count"></span></button>
-  <button role="tab" id="tab-pool"     aria-controls="pool"     aria-selected="false"
+  <button role="tab" id="tab-usage"    aria-controls="usage"    aria-selected="false">Usage<span class="count"></span></button>
+  <button role="tab" id="tab-pool"     aria-controls="pool"     aria-selected="true"
           title="Pool members">Pool<span class="count"></span></button>
   <button role="tab" id="tab-accounts" aria-controls="accounts" aria-selected="false">Accounts<span class="count"></span></button>
   <button role="tab" id="tab-access"   aria-controls="access"   aria-selected="false"
@@ -75,8 +75,8 @@
           aria-label="Pool status &amp; health" title="Pool status &amp; health">Health</button>
 </nav>
 <main id="app" inert>
-  <section id="usage"    role="tabpanel" aria-labelledby="tab-usage"><div class="body"></div></section>
-  <section id="pool"     role="tabpanel" aria-labelledby="tab-pool" hidden><div class="body"></div></section>
+  <section id="usage"    role="tabpanel" aria-labelledby="tab-usage" hidden><div class="body"></div></section>
+  <section id="pool"     role="tabpanel" aria-labelledby="tab-pool"><div class="body"></div></section>
   <section id="accounts" role="tabpanel" aria-labelledby="tab-accounts" hidden><div class="body"></div></section>
   <section id="access"   role="tabpanel" aria-labelledby="tab-access" hidden><div class="body"></div></section>
   <section id="status"   role="tabpanel" aria-labelledby="tab-status" hidden><div class="body"></div></section>
