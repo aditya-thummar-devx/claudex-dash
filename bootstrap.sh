@@ -66,41 +66,9 @@ PLIST_EOF
 launchctl bootout "gui/$(id -u)/$LABEL" &>/dev/null || true
 launchctl load "$PLIST"
 
-# ---- daily auto-updater ----
-UPDATER_LABEL="com.claudex-dash.updater"
-UPDATER_PLIST="$HOME/Library/LaunchAgents/$UPDATER_LABEL.plist"
-UPDATE_SCRIPT="$ROOT/update.sh"
-
-chmod +x "$UPDATE_SCRIPT"
-
-cat > "$UPDATER_PLIST" <<UPDATER_EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>$UPDATER_LABEL</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/bin/bash</string>
-    <string>$UPDATE_SCRIPT</string>
-  </array>
-  <key>StartCalendarInterval</key>
-  <dict>
-    <key>Hour</key><integer>14</integer>
-    <key>Minute</key><integer>0</integer>
-  </dict>
-  <key>StandardOutPath</key><string>$ROOT/launchd.log</string>
-  <key>StandardErrorPath</key><string>$ROOT/launchd.log</string>
-</dict>
-</plist>
-UPDATER_EOF
-
-launchctl bootout "gui/$(id -u)/$UPDATER_LABEL" &>/dev/null || true
-launchctl load "$UPDATER_PLIST"
-
 echo
 echo "claudex-dash → http://127.0.0.1:$PORT"
 echo "  starts on login, restarts if it crashes.  logs: $ROOT/launchd.log"
-echo "  auto-updates daily at 14:00.  manual update: bun run update"
+echo "  manual update: bun run update  (or Settings → Check for updates)"
 echo "  stop for good:  bun run uninstall     restart:  bun run restart"
 (sleep 2 && open "http://127.0.0.1:$PORT") &>/dev/null &

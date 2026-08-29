@@ -1,21 +1,23 @@
-// claudex-dash — a web view of claudex state, with five actions.
+// claudex-dash — a web view of claudex state, with six actions.
 //
-// Six API routes plus static files. Two GETs compose the panels from seven CLI captures; each panel
-// carries both parsed data and the raw text it came from, so a parser that stops recognising
-// claudex's output degrades that panel to plain text instead of showing wrong numbers.
+// Seven API routes plus static files. Three GETs compose the panels from seven CLI captures, or check
+// this dashboard's own repo against origin/main; each panel carries both parsed data and the raw text
+// it came from, so a parser that stops recognising claudex's output degrades that panel to plain text
+// instead of showing wrong numbers.
 //
-// Five POSTs back the page's buttons: `claudex switch`, `claudex pool use`,
-// `claudex access allow|deny`, `claudex pool start|stop`, and `claudex autoswitch on|off`. They are
-// the only routes that change anything, and they are held to the same rules — same-origin only, JSON
-// content type only, and — for the three that take one — a name that claudex itself already listed,
-// in the namespace of the command about to receive it. The other two take no name at all; see the
-// POSTS table below.
+// Six POSTs back the page's buttons: `claudex switch`, `claudex pool use`,
+// `claudex access allow|deny`, `claudex pool start|stop`, `claudex autoswitch on|off`, and this
+// dashboard's own `git pull` to update itself. They are the only routes that change anything, and
+// they are held to the same rules — same-origin only, JSON content type only, and — for the three
+// that take a name — a name that claudex itself already listed, in the namespace of the command about
+// to receive it. The other three take no name at all; see the POSTS table below.
 import { join } from "node:path";
 import {
   captureAll, captureMember, switchAccount, poolUse, accessSet, poolStart, poolStop,
   autoswitchOn, autoswitchOff,
 } from "./src/claudex-dash.ts";
 import type { Capture } from "./src/claudex-dash.ts";
+import { checkForUpdate, applyUpdate } from "./src/update.ts";
 import { sameOrigin } from "./src/guard.ts";
 import { resolveMe, whoAmI } from "./src/me.ts";
 import {
@@ -104,6 +106,14 @@ const POSTS = {
     verbs: ["on", "off"] as const,
     run: (_name: string, verb: "on" | "off") => (verb === "on" ? autoswitchOn() : autoswitchOff()),
   },
+  "/api/update/apply": {
+    // Same shape again: no name, one thing this route ever does. `verbs` is a single-item tuple
+    // purely so the body still goes through the same dispatch as every other row, rather than a
+    // bespoke branch below.
+    known: null,
+    verbs: ["apply"] as const,
+    run: (_name: string, _verb: "apply") => applyUpdate(),
+  },
 } as const;
 
 const config = {
@@ -165,6 +175,12 @@ const config = {
       return Response.json(panel(cap, parseMemberDetail(cap.raw)));
     }
 
+    // This dashboard's own version check: fetches origin/main and compares short SHAs. Unguarded
+    // like /api/all — the response is just two commit hashes, nothing sensitive.
+    if (url.pathname === "/api/update/check" && req.method === "GET") {
+      return Response.json(await checkForUpdate());
+    }
+
     // ---- the mutating routes ----
     // Everything above this point only reads. These five change something — which account is
     // logged in, who may borrow this one, whether it is currently borrowing from the pool, or
@@ -210,6 +226,14 @@ const config = {
       // claudex prints its own explanation on failure; pass it straight through rather than
       // inventing a message that might not match what actually went wrong.
       const r = await route.run(name, verb);
+
+      // The one write whose success means "kill this process": launchd's KeepAlive=true
+      // (bootstrap.sh) respawns it with the code just pulled. Deferred so the response below
+      // actually reaches the browser before the process exits.
+      if (url.pathname === "/api/update/apply" && r.ok) {
+        setTimeout(() => process.exit(0), 100);
+      }
+
       return Response.json({ ok: r.ok, raw: r.raw.trim() }, { status: r.ok ? 200 : 500 });
     }
 

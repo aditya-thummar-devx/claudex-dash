@@ -380,6 +380,7 @@ async function load(fresh) {
       $("hdr").removeAttribute("inert");
       $("tabbar").removeAttribute("inert");
       $("app").removeAttribute("inert");
+      checkForUpdates(true); // fire-and-forget; this block runs exactly once, ever
     }
   } catch (e) {
     // The header slot only marks the state — it is styled like "cached 12s ago" and would bury the
@@ -608,6 +609,13 @@ const ASK = {
     "Turns off automatic account switching. You'll switch accounts yourself when usage gets high.",
     "Disable",
   ],
+  // No coworker's name either — the parameter carries the target commit SHA instead, since that's
+  // the one thing worth showing before pulling it.
+  update: (sha) => [
+    "Update available",
+    `commit ${sha} is available. This pulls the latest code and restarts the server — it comes back up on its own.`,
+    "Update now",
+  ],
 };
 
 // Where each kind posts to, what it sends, and what to say when it lands. Split from ASK so that
@@ -624,6 +632,7 @@ const FIRE = {
   stop: () => ["/api/pool/toggle", { action: "stop" }, "consuming off"],
   on: () => ["/api/autoswitch/toggle", { action: "on" }, "autoswitch on"],
   off: () => ["/api/autoswitch/toggle", { action: "off" }, "autoswitch off"],
+  update: () => ["/api/update/apply", { action: "apply" }, "updated — restarting…"],
 };
 
 // Every write this page can make: `claudex switch <account>` from a Usage card, `claudex pool use
@@ -680,6 +689,69 @@ document.querySelector("main").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-kind]");
   if (btn) doAction(btn, btn.dataset.kind, btn.dataset.name);
 });
+
+// ---------- check for updates ----------
+// Lives in Settings, not <main>, so it gets its own direct listener like #mine/#consuming/#autoswitch
+// rather than the delegated one above.
+const updateBtn = $("update-btn");
+const updateStatus = $("update-status");
+const setUpdateStatus = (text) => {
+  if (updateStatus) updateStatus.textContent = text;
+};
+
+async function checkForUpdates(auto) {
+  if (updateBtn) {
+    updateBtn.disabled = true;
+    updateBtn.textContent = "Checking…";
+  }
+  if (!auto) setUpdateStatus("checking…");
+  try {
+    const r = await fetch("/api/update/check");
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "check failed");
+    if (d.upToDate) {
+      setUpdateStatus(`up to date · you're on ${d.current}`);
+    } else {
+      setUpdateStatus(`commit ${d.latest} available · you're on ${d.current}`);
+      if (await ask(...ASK.update(d.latest))) {
+        if (updateBtn) updateBtn.textContent = "Updating…";
+        await fireUpdate();
+      }
+    }
+  } catch (err) {
+    setUpdateStatus(auto ? "" : `check failed: ${err.message}`);
+    if (!auto) toast(err.message, true); // quiet on the boot check: offline is not an error worth a toast
+  } finally {
+    if (updateBtn) {
+      updateBtn.disabled = false;
+      updateBtn.textContent = "Check for updates";
+    }
+  }
+}
+
+// Deliberately NOT doAction(): every other write reloads via load(true) on success, but this one's
+// success means the server is about to process.exit(0) (server.ts) for launchd to respawn — an
+// immediate load(true) would almost certainly hit the dead process mid-restart and toast a confusing
+// failure right under the success message. So it just settles the status line and stops there.
+async function fireUpdate() {
+  const [url, body, done] = FIRE.update();
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || d.raw || `HTTP ${r.status}`);
+    toast(done);
+    setUpdateStatus("restarting…");
+  } catch (err) {
+    toast(err.message, true);
+    setUpdateStatus(`update failed: ${err.message}`);
+  }
+}
+
+updateBtn?.addEventListener("click", () => checkForUpdates(false));
 
 // ---------- switch to mine ----------
 // Which account is *mine* is the one thing claudex cannot say — its `current` (aliased `whoami`)
