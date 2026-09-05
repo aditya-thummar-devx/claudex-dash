@@ -24,10 +24,9 @@ export function mineTarget(last, tab) {
       const on = last.pool.data.find((m) => m.marked)?.name;
       return on === me.pool ? null : { kind: "pool", name: me.pool };
     }
-    // Both panels are views of the same `claudex list` / `claudex current` pair, so both switch the
-    // same way — and Accounts gets its first switch affordance for free.
+    // Usage shows the same `claudex list` / `claudex current` pair Accounts used to — no tab of its
+    // own anymore, but `last.accounts` is still sent for exactly this.
     case "usage":
-    case "accounts":
       if (!last.accounts?.ok) return null;
       return last.accounts.data.current.account === me.account
         ? null

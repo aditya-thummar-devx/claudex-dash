@@ -195,7 +195,7 @@ pre.raw {
 .fallback { color: var(--warn); font-size: 12px; margin: 0 0 10px; }
 
 #usage, #pool { background: none; border: 0; padding: 0; }
-#accounts, #status { width: min(780px, 100%); min-width: 0; justify-self: center; }
+#status { width: min(780px, 100%); min-width: 0; justify-self: center; }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 12px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
@@ -251,14 +251,6 @@ table { width: 100%; border-collapse: collapse; }
 th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); font-weight: 600; padding: 0 10px 8px 0; }
 td { padding: 7px 10px 7px 0; border-top: 1px solid var(--line); }
 tr.active td { font-weight: 600; background: var(--ok-soft); }
-
-#accounts table { table-layout: fixed; }
-#accounts th:nth-child(1) { width: 110px; }
-#accounts th:nth-child(2) { width: 220px; }
-#accounts th:nth-child(3) { width: 120px; }
-#accounts th:nth-child(4) { width: 110px; }
-
-#accounts td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
 .pill { border: 1px solid var(--line); border-radius: 99px; padding: 5px 12px; font-size: 12px; background: var(--chip-bg); }

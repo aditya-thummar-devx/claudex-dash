@@ -211,19 +211,6 @@ const poolHtml = (members) => {
     .join("")}</div>`;
 };
 
-const accountsHtml = (d) => `
-  <table>
-    <tr><th>Account</th><th>Email</th><th>Org</th><th>Plan</th><th>Saved</th></tr>
-    ${d.accounts
-      .map(
-        (a) => `<tr class="${a.active ? "active" : ""}">
-        <td>${esc(a.account)}</td><td title="${esc(a.email)}">${esc(a.email)}</td>
-        <td>${esc(a.org)}</td><td>${esc(a.plan)}</td><td>${esc(a.saved)}</td></tr>`
-      )
-      .join("")}
-  </table>
-  <p class="note">active: ${esc(d.current.account)} · ${esc(d.current.email)}</p>`;
-
 const statusHtml = (d) => `
   <div class="pills">
     <span class="pill ${d.status.consuming.on ? "on" : ""}">consuming ${d.status.consuming.on ? "on" : "off"}</span>
@@ -285,22 +272,20 @@ const memberHtml = (d) => `
 
 // Sorting is purely a view concern — /api/all hands back whatever order claudex printed and the
 // panels re-render from the stashed payload, so a menu change never re-runs the CLI. Only the two
-// row panels take the controls; accounts and status are passed through untouched.
+// row panels take the controls; status is passed through untouched.
 const opts = () => ({ sort: $("sort").value, only5x: $("only5x").checked });
 const HTML = {
   usage: (rows) => usageHtml(arrange(rows, opts())),
   pool: (members) => poolHtml(arrange(members, opts())),
-  accounts: accountsHtml,
-  // Key order is the tab order for ArrowLeft/Right, so it must match the markup order in
-  // index.html — and PANELS[0] is the tab a bare URL opens.
   status: statusHtml,
 };
 const PANELS = Object.keys(HTML);
 // Every tab, including Playground — which isn't backed by /api/all at all, so it stays out of
-// PANELS (paint()/render()/flag()/setCount()/load() all iterate PANELS on purpose). ALL_TABS is only
-// for the parts of the tab machinery that don't care what's behind a tab: show/hide, hash routing,
-// and arrow-key navigation.
-const ALL_TABS = [...PANELS, "playground"];
+// PANELS (paint()/render()/flag()/setCount()/load() all iterate PANELS on purpose). ALL_TABS is the
+// full nav order instead — Playground sits before Health, matching the markup — and is only used by
+// the parts of the tab machinery that don't care what's behind a tab: show/hide, hash routing, and
+// arrow-key navigation.
+const ALL_TABS = ["usage", "pool", "playground", "status"];
 
 // Tabs hide three of four panels, so a panel that fell back to raw text would otherwise be
 // invisible. This puts that on the tab itself.
@@ -314,14 +299,13 @@ function flag(name, bad) {
   }
 }
 
-// Panels differ in shape: usage/pool are bare arrays, accounts wraps one in an object. Health is
-// absent on purpose — its tab has no .count span, so setCount() no-ops there.
+// Panels differ in shape: usage/pool are bare arrays. Health is absent on purpose — its tab has no
+// .count span, so setCount() no-ops there.
 // The count is of what the panel actually shows: with the 5x filter on, "Pool (10)" above three
 // cards would be a lie about the list under it.
 const COUNT = {
   usage: (d) => arrange(d, opts()).length,
   pool: (d) => arrange(d, opts()).length,
-  accounts: (d) => d.accounts.length,
 };
 
 // null means "no count": either the panel fell back to raw text, or it never had one. A panel we
@@ -413,8 +397,7 @@ function show(name) {
     $(p).hidden = p !== name;
     $(`tab-${p}`).setAttribute("aria-selected", String(p === name));
   }
-  // Accounts is a table and Health/Playground aren't lists at all, so the controls would order
-  // nothing on any of them.
+  // Health and Playground aren't lists at all, so the controls would order nothing on either.
   $("ctl").hidden = name !== "usage" && name !== "pool";
   updateMine(); // the tab decides which of the two commands "switch to mine" would run
 }

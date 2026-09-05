@@ -44,7 +44,6 @@ Bun is installed for you. macOS.
 |---|---|
 | **Usage** | Your saved accounts, with session and weekly gauges. |
 | **Pool** | Everyone in the pool, their headroom, and their net give/take. "View Details" opens one person's own / borrowed / shared breakdown. |
-| **Accounts** | The saved account table — email, org, plan, when it was last saved. |
 | **Access** | Who may borrow *your* account through the pool, and whether each is allowed or blocked. |
 | **Health** | `pool status` and `doctor` — what's on, what's wired, what's failing. |
 
