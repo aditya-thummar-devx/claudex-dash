@@ -1,9 +1,10 @@
 // claudex-dash — a web view of claudex state, with six actions.
 //
-// Seven API routes plus static files. Three GETs compose the panels from seven CLI captures, or check
-// this dashboard's own repo against origin/main; each panel carries both parsed data and the raw text
-// it came from, so a parser that stops recognising claudex's output degrades that panel to plain text
-// instead of showing wrong numbers.
+// Seven API routes plus static files. The GETs compose the panels from seven CLI captures, run one
+// allowlisted read command on demand for the Playground tab, or check this dashboard's own repo
+// against origin/main; each panel carries both parsed data and the raw text it came from, so a
+// parser that stops recognising claudex's output degrades that panel to plain text instead of
+// showing wrong numbers.
 //
 // Seven POSTs back the page's buttons: `claudex switch`, `claudex remove`, `claudex pool use`,
 // `claudex access allow|deny`, `claudex pool start|stop`, `claudex autoswitch on|off`, and this
@@ -13,10 +14,10 @@
 // to receive it. The other three take no name at all; see the POSTS table below.
 import { join } from "node:path";
 import {
-  captureAll, captureMember, switchAccount, poolUse, accessSet, poolStart, poolStop,
-  autoswitchOn, autoswitchOff, removeAccount,
+  captureAll, captureOne, captureMember, switchAccount, poolUse, accessSet, poolStart, poolStop,
+  autoswitchOn, autoswitchOff, removeAccount, COMMANDS,
 } from "./src/claudex-dash.ts";
-import type { Capture } from "./src/claudex-dash.ts";
+import type { Capture, CommandKey } from "./src/claudex-dash.ts";
 import { checkForUpdate, applyUpdate } from "./src/update.ts";
 import { sameOrigin } from "./src/guard.ts";
 import { resolveMe, whoAmI } from "./src/me.ts";
@@ -179,6 +180,18 @@ const config = {
 
       const cap = await captureMember(name, url.searchParams.has("fresh"));
       return Response.json(panel(cap, parseMemberDetail(cap.raw)));
+    }
+
+    // The Playground tab: run one already-allowlisted read command on demand, instead of only ever
+    // bundled into /api/all. `cmd` must be one of COMMANDS's own keys — the same fixed, hardcoded
+    // set captureAll() already runs on every page load — so this opens no new spawn surface at all.
+    // Always fresh: pressing a command in a terminal should actually run it, not serve a 60s-old
+    // cache silently. No parse.ts involved — Playground always shows claudex's raw text.
+    if (url.pathname === "/api/playground/read" && req.method === "GET") {
+      const cmd = url.searchParams.get("cmd") ?? "";
+      if (!(cmd in COMMANDS)) return Response.json({ error: "unknown command" }, { status: 400 });
+      const cap = await captureOne(cmd as CommandKey, true);
+      return Response.json({ ok: !cap.error, raw: cap.raw, error: cap.error });
     }
 
     // This dashboard's own version check: fetches origin/main and compares short SHAs. Unguarded

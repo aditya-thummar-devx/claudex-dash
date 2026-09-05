@@ -269,6 +269,52 @@ tr.active td { font-weight: 600; background: var(--ok-soft); }
 .bad { color: var(--danger); }
 .note { color: var(--dim); font-size: 11px; margin: 12px 0 0; }
 
+/* ---- Playground ---- */
+/* #playground opts out of section's own background/border/padding (set on .pg-left/.pg-right
+   instead) because it's a two-column split, not a single card. The 140px is a pragmatic fixed
+   offset for the sticky header + fixed tabbar, same approach main already uses for its 60px bottom
+   padding rather than measuring either bar. */
+#playground {
+  background: none; border: 0; padding: 0;
+  display: flex; gap: 12px;
+  height: calc(100vh - 140px);
+}
+/* #playground's own ID selector (specificity 1,0,0) otherwise beats section[hidden]{display:none}
+   (0,1,1) and stays visible on every other tab — this raises specificity past both. */
+#playground[hidden] { display: none; }
+.pg-left, .pg-right {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  overflow-y: auto; min-width: 0;
+}
+.pg-right { flex: 0 0 33%; padding: 8px; }
+.pg-left { flex: 1; display: flex; flex-direction: column; padding: 0; }
+
+.pg-left-h {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--line); flex: none;
+  font-size: 12px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .04em;
+}
+.pg-left-h button { padding: 4px 10px; font-size: 12px; }
+.pg-log { padding: 12px 14px; overflow-y: auto; }
+
+.pg-item {
+  display: block; width: 100%; text-align: left; border: 0; background: none;
+  padding: 6px 8px 6px calc(8px + var(--depth, 0) * 14px); border-radius: 6px; font-size: 13px;
+}
+.pg-item:hover { background: var(--chip-bg); border-color: transparent; }
+.pg-caret { color: var(--dim); display: inline-block; width: 1em; }
+.pg-summary {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+  color: var(--dim); font-size: 11px; line-height: 1.4; margin-top: 2px;
+}
+.pg-children { border-left: 1px solid var(--line); margin-left: 14px; }
+.pg-empty { padding-left: calc(8px + var(--depth, 0) * 14px); }
+
+.pg-entry { margin-bottom: 12px; }
+.pg-entry .pg-cmd { color: var(--accent-ink); font: 12px/1.4 var(--font-mono); margin-bottom: 4px; }
+.pg-entry.bad .pg-cmd { color: var(--danger); }
+.pg-entry pre.raw { margin: 0; }
+
 /* ---- Settings & Dialogs ---- */
 dialog#detail, dialog#settings {
   padding: 0;

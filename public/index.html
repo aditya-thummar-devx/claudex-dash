@@ -71,12 +71,25 @@
   <button role="tab" id="tab-accounts" aria-controls="accounts" aria-selected="false">Accounts<span class="count"></span></button>
   <button role="tab" id="tab-status"   aria-controls="status"   aria-selected="false"
           aria-label="Pool status &amp; health" title="Pool status &amp; health">Health</button>
+  <button role="tab" id="tab-playground" aria-controls="playground" aria-selected="false"
+          title="Browse and run claudex commands">Playground</button>
 </nav>
 <main id="app" inert>
   <section id="usage"    role="tabpanel" aria-labelledby="tab-usage" hidden><div class="body"></div></section>
   <section id="pool"     role="tabpanel" aria-labelledby="tab-pool"><div class="body"></div></section>
   <section id="accounts" role="tabpanel" aria-labelledby="tab-accounts" hidden><div class="body"></div></section>
   <section id="status"   role="tabpanel" aria-labelledby="tab-status" hidden><div class="body"></div></section>
+  <!-- Not one of the /api/all panels — its own tab machinery in app.js (ALL_TABS), its own data
+       (playground.js's TREE + live names off `last`). Right = command tree (1/3), left = a
+       non-writable log of what's been run, matching the ask: browse commands on the right, terminal
+       output on the left. -->
+  <section id="playground" role="tabpanel" aria-labelledby="tab-playground" hidden>
+    <div class="pg-left">
+      <header class="pg-left-h"><span>Output</span><button id="pg-clear">Clear</button></header>
+      <div class="pg-log"></div>
+    </div>
+    <div class="pg-right"></div>
+  </section>
 </main>
 <!-- Native <dialog>: Esc, focus trap, backdrop and background inertness come free, and the close
      button needs no JS at all because a <form method="dialog"> submit closes its own dialog. -->

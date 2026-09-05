@@ -155,6 +155,12 @@ export async function captureAll(fresh: boolean): Promise<Record<CommandKey, Cap
   return Object.fromEntries(keys.map((k, i) => [k, results[i]])) as Record<CommandKey, Capture>;
 }
 
+// One COMMANDS entry, run on its own rather than bundled into captureAll() — the Playground tab
+// runs exactly one read command at a time, on demand, rather than all six on every page load.
+export function captureOne(key: CommandKey, fresh: boolean): Promise<Capture> {
+  return capture(key, COMMANDS[key], fresh);
+}
+
 // The one read command that takes an argument. `pool member` is read-only — it prints a breakdown
 // and mutates nothing — but it does break the "no user input ever reaches argv" rule above, so the
 // name is not trusted here: server.ts matches it against the members parsed out of `pool members`

@@ -6,6 +6,7 @@ import { arrange, SORTS } from "./sort.js";
 import { mineTarget } from "./mine.js";
 import { consumingTarget } from "./consuming.js";
 import { autoswitchTarget } from "./autoswitch.js";
+import { TREE, childKind, namesFor, findNode } from "./playground.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) =>
@@ -295,6 +296,11 @@ const HTML = {
   status: statusHtml,
 };
 const PANELS = Object.keys(HTML);
+// Every tab, including Playground — which isn't backed by /api/all at all, so it stays out of
+// PANELS (paint()/render()/flag()/setCount()/load() all iterate PANELS on purpose). ALL_TABS is only
+// for the parts of the tab machinery that don't care what's behind a tab: show/hide, hash routing,
+// and arrow-key navigation.
+const ALL_TABS = [...PANELS, "playground"];
 
 // Tabs hide three of four panels, so a panel that fell back to raw text would otherwise be
 // invisible. This puts that on the tab itself.
@@ -340,6 +346,9 @@ function paint() {
   updateMine();
   updateConsuming();
   updateAutoswitch();
+  // Playground's dynamic branches (Switch/Remove/Pool use/Pool member/Allow/Deny) read names live
+  // off `last` at render time, so a fresh capture needs them redrawn — cheap, no network of its own.
+  renderPgTree();
 }
 
 async function load(fresh) {
@@ -400,12 +409,12 @@ async function load(fresh) {
 // ---------- tabs ----------
 // Every panel arrives in one /api/all, so switching tabs is pure show/hide — never a refetch.
 function show(name) {
-  for (const p of PANELS) {
+  for (const p of ALL_TABS) {
     $(p).hidden = p !== name;
     $(`tab-${p}`).setAttribute("aria-selected", String(p === name));
   }
-  // Accounts is a table and Health is not a list at all, so the controls would order
-  // nothing on either.
+  // Accounts is a table and Health/Playground aren't lists at all, so the controls would order
+  // nothing on any of them.
   $("ctl").hidden = name !== "usage" && name !== "pool";
   updateMine(); // the tab decides which of the two commands "switch to mine" would run
 }
@@ -413,13 +422,13 @@ function show(name) {
 // A stale or hand-typed hash must open Pool, not hide every panel.
 const fromHash = () => {
   const h = decodeURIComponent(location.hash.slice(1));
-  return PANELS.includes(h) ? h : "pool";
+  return ALL_TABS.includes(h) ? h : "pool";
 };
 
 // Every tab change goes through the hash, so clicks and browser back/forward share one code path.
 const go = (name) => (location.hash = name);
 
-for (const p of PANELS) {
+for (const p of ALL_TABS) {
   const tab = $(`tab-${p}`);
   tab.addEventListener("click", () => go(p));
   // Roles and aria-selected without keyboard nav is a half-built tablist.
@@ -427,7 +436,7 @@ for (const p of PANELS) {
     const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
     if (!step) return;
     e.preventDefault();
-    const next = PANELS[(PANELS.indexOf(p) + step + PANELS.length) % PANELS.length];
+    const next = ALL_TABS[(ALL_TABS.indexOf(p) + step + ALL_TABS.length) % ALL_TABS.length];
     go(next);
     $(`tab-${next}`).focus();
   });
@@ -655,6 +664,24 @@ const FIRE = {
 //
 // A function rather than the listener body because the header's "Switch to mine" needs exactly this
 // sequence but sits OUTSIDE <main>, so the delegation below can never reach it.
+// The POST half of every write, shared by doAction() (a real button) and the Playground tab (no
+// button — just a history entry). Throws claudex's own explanation on failure rather than one made
+// up here; callers decide what to do with that (a toast + restored label for doAction, a red history
+// entry for Playground).
+async function fireMutation(kind, name) {
+  const [url, body] = FIRE[kind](name);
+  const r = await fetch(url, {
+    method: "POST",
+    // Not decoration: the server rejects anything else, which is what forces a CORS preflight on
+    // a cross-origin caller and keeps another page in this browser from switching your account.
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const d = await r.json();
+  if (!r.ok || !d.ok) throw new Error(d.error || d.raw || `HTTP ${r.status}`);
+  return d;
+}
+
 async function doAction(btn, kind, name) {
   // Ask BEFORE touching the button, for two reasons. A cancelled confirm has to leave the page
   // exactly as it was, and showModal() records whatever is focused as its return target — disabling
@@ -662,21 +689,12 @@ async function doAction(btn, kind, name) {
   // of back on this button. The dialog is modal, so the button is unclickable meanwhile regardless.
   if (!(await ask(...ASK[kind](name)))) return;
 
-  const [url, body, done] = FIRE[kind](name);
+  const [, , done] = FIRE[kind](name);
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = "working…";
   try {
-    const r = await fetch(url, {
-      method: "POST",
-      // Not decoration: the server rejects anything else, which is what forces a CORS preflight on
-      // a cross-origin caller and keeps another page in this browser from switching your account.
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const d = await r.json();
-    // claudex's own output beats a message we made up — it says why far better than we can.
-    if (!r.ok || !d.ok) throw new Error(d.error || d.raw || `HTTP ${r.status}`);
+    await fireMutation(kind, name);
     // Unkeyed on purpose: load() below clears only keyed toasts, so this survives the re-render.
     toast(done);
     await load(true);
@@ -701,6 +719,156 @@ document.querySelector("main").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-kind]");
   if (btn) doAction(btn, btn.dataset.kind, btn.dataset.name);
 });
+
+// ---------- playground ----------
+// TREE/childKind/namesFor/findNode are pure (playground.js, no DOM); everything here is just the DOM
+// half, same split as sort.js's arrange() vs paint(). Not part of PANELS/paint() — this section
+// renders itself, and re-renders on its own triggers (expand/collapse, and every load()) rather than
+// through the /api/all pipeline the other tabs share.
+const pgRight = document.querySelector("#playground .pg-right");
+const pgLogEl = document.querySelector("#playground .pg-log");
+let pgExpanded = new Set(); // node ids currently expanded — survives across re-renders
+let pgHistory = []; // {cmd, status: "running"|"ok"|"bad", output} — in-memory only, cleared on reload
+
+// A dynamic branch's "children" are names read live off `last` (never free text) — one leaf button
+// per name, addressed as "<parentId>::<name>" since they aren't real TREE nodes. Empty is an ordinary
+// state (that panel hasn't loaded ok yet, or truly has nobody in it), not an error.
+function pgRenderChildren(node, depth) {
+  if (childKind(node) === "static") return node.children.map((c) => pgRenderNode(c, depth)).join("");
+  const names = namesFor(node.argSource, last);
+  return names.length
+    ? names
+        .map(
+          (name) =>
+            `<button class="pg-item pg-leaf" style="--depth:${depth}" data-node="${esc(node.id)}::${esc(name)}">${esc(name)}</button>`
+        )
+        .join("")
+    : `<p class="note pg-empty" style="--depth:${depth}">no known names yet — refresh first</p>`;
+}
+
+// A node is either expandable (children/argSource — pressing it toggles) or a direct leaf (cmd, for
+// a no-argument read, or mutate, for a no-argument write like Start pool) — never both. See
+// playground.js's TREE comment for the full shape.
+function pgRenderNode(node, depth) {
+  const kind = childKind(node);
+  const expanded = kind && pgExpanded.has(node.id);
+  const arrow = kind ? (expanded ? "▾" : "▸") : "";
+  let html = `<button class="pg-item" style="--depth:${depth}" data-node="${esc(node.id)}">
+    <span class="pg-label">${arrow ? `<span class="pg-caret">${arrow}</span> ` : ""}${esc(node.label)}</span>
+    ${node.summary ? `<span class="pg-summary">${esc(node.summary)}</span>` : ""}
+  </button>`;
+  if (expanded) html += `<div class="pg-children">${pgRenderChildren(node, depth + 1)}</div>`;
+  return html;
+}
+
+function renderPgTree() {
+  pgRight.innerHTML = TREE.map((n) => pgRenderNode(n, 0)).join("");
+}
+
+function pgLogStart(cli) {
+  const entry = { cmd: cli, status: "running", output: "" };
+  pgHistory.push(entry);
+  renderPgHistory();
+  return entry;
+}
+
+function pgLogFinish(entry, ok, output) {
+  entry.status = ok ? "ok" : "bad";
+  entry.output = output;
+  renderPgHistory();
+}
+
+// Oldest to newest, auto-scrolled to the bottom — a real terminal's scrollback, not a stack of
+// toasts. Reuses .raw's monospace styling for the output block; nothing new needed there.
+function renderPgHistory() {
+  pgLogEl.innerHTML = pgHistory
+    .map(
+      (e) => `<div class="pg-entry${e.status === "bad" ? " bad" : ""}">
+        <div class="pg-cmd">claudex ${esc(e.cmd)}</div>
+        <pre class="raw">${esc(e.status === "running" ? "running…" : e.output)}</pre>
+      </div>`
+    )
+    .join("");
+  pgLogEl.scrollTop = pgLogEl.scrollHeight;
+}
+
+// The three ways a leaf actually runs. Every one of them is a route that already exists for another
+// tab's button — Playground adds no new way to reach claudex beyond the one read route in server.ts.
+async function pgRunRead(node) {
+  const entry = pgLogStart(node.cli);
+  try {
+    const r = await fetch(`/api/playground/read?cmd=${encodeURIComponent(node.cmd)}`);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || d.raw || "failed");
+    pgLogFinish(entry, true, d.raw?.trim() || "(empty)");
+  } catch (err) {
+    pgLogFinish(entry, false, err.message);
+  }
+}
+
+// Same route showMember() already uses for View Details — always fresh, same as every Playground run.
+async function pgRunMemberRead(node, name) {
+  const entry = pgLogStart(node.cli.replace("{name}", name));
+  try {
+    const r = await fetch(`/api/pool/member?name=${encodeURIComponent(name)}&fresh=1`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    pgLogFinish(entry, true, d.raw?.trim() || "(empty)");
+  } catch (err) {
+    pgLogFinish(entry, false, err.message);
+  }
+}
+
+// Same ask-then-fire as doAction(), just logged instead of toasted — see fireMutation() above.
+async function pgRunMutation(node, name) {
+  if (!(await ask(...ASK[node.mutate](name)))) return;
+  const entry = pgLogStart(node.cli.replace("{name}", name ?? ""));
+  try {
+    const d = await fireMutation(node.mutate, name);
+    pgLogFinish(entry, true, d.raw?.trim() || "(no output)");
+    await load(true); // keeps the other tabs, and this tab's own name lists, in sync
+  } catch (err) {
+    pgLogFinish(entry, false, err.message);
+  }
+}
+
+// Delegated: renderPgTree() replaces the whole tree via innerHTML on every expand/collapse.
+pgRight.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-node]");
+  if (!btn) return;
+  const raw = btn.dataset.node;
+  const sep = raw.indexOf("::");
+  // A real TREE node id — either expandable (toggle) or a direct leaf (cmd/mutate, no argument).
+  if (sep === -1) {
+    const node = findNode(raw);
+    if (!node) return;
+    if (childKind(node)) {
+      if (pgExpanded.has(node.id)) pgExpanded.delete(node.id);
+      else pgExpanded.add(node.id);
+      renderPgTree();
+    } else if (node.cmd) {
+      pgRunRead(node);
+    } else if (node.mutate) {
+      pgRunMutation(node, undefined);
+    }
+    return;
+  }
+  // A dynamic name leaf — resolve its parent (the real TREE node) to know how to run it.
+  const node = findNode(raw.slice(0, sep));
+  const name = raw.slice(sep + 2);
+  if (!node) return;
+  if (node.readMember) pgRunMemberRead(node, name);
+  else if (node.mutate) pgRunMutation(node, name);
+});
+
+// Direct listener, not delegated: this button is markup in index.html, so it outlives every
+// innerHTML pass — same reasoning as #refresh. Clears the log only; expand state is untouched.
+$("pg-clear").addEventListener("click", () => {
+  pgHistory = [];
+  renderPgHistory();
+});
+
+renderPgTree(); // static top level renders immediately; dynamic branches fill in once `last` loads
 
 // ---------- check for updates ----------
 // Lives in Settings, not <main>, so it gets its own direct listener like #mine/#consuming/#autoswitch
