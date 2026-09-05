@@ -150,12 +150,34 @@ const usageHtml = (rows) =>
     )
     .join("")}</div>`;
 
-const poolHtml = (members) =>
-  !members.length
-    ? EMPTY
-    : `<div class="cards">${members
-    .map((m) =>
-      card({
+// Allow/Deny used to be its own Access tab, keyed off a separate `claudex access` list
+// (AccessPerson) rather than pool members. Same dotted-name namespace, different command,
+// never cross-validated for correctness (see src/parse.ts) — so this map is a display-only
+// lookup. The write still posts m.name to /api/access, which the server validates against
+// the access list's own names, so a stale/missing match here can't cause a wrong write; it
+// only decides whether a button is drawn at all.
+const accessByName = () => {
+  const m = new Map();
+  for (const p of last?.access?.data ?? []) m.set(p.name, p.allowed);
+  return m;
+};
+
+const poolHtml = (members) => {
+  if (!members.length) return EMPTY;
+  const access = accessByName();
+  return `<div class="cards">${members
+    .map((m) => {
+      // One button per row, never two, same rule accessHtml used to follow: whichever action
+      // would change state. No entry in the access list (access.has false) means nothing to
+      // show — a button whose command can't run is worse than no button.
+      const allowed = access.get(m.name);
+      const accessBtn =
+        allowed === undefined
+          ? ""
+          : allowed
+          ? `<button class="access-btn" data-kind="deny" data-name="${esc(m.name)}">Deny</button>`
+          : `<button class="access-btn" data-kind="allow" data-name="${esc(m.name)}">Allow</button>`;
+      return card({
         on: m.sharing,
         sel: m.marked,
         name: esc(m.name),
@@ -169,13 +191,18 @@ const poolHtml = (members) =>
         // is claudex's ▶, whose exact meaning parse.ts:165 records as undocumented, so treating it
         // as "already serving you" is an inference. A safe one: the worst a wrong guess does is
         // hide a button whose command (`pool use` on the current member) is a no-op.
+        // access-btn (left) gets margin-right:auto in CSS, which shoves Switch/View Details to the
+        // right — a space-between layout without a wrapper div, and one that collapses back to a
+        // plain right-aligned row when accessBtn is "" (nothing to push against).
         actions: `<div class="card-actions">
+             ${accessBtn}
              ${m.marked ? "" : `<button data-kind="pool" data-name="${esc(m.name)}">Switch</button>`}
              <button class="detail" data-name="${esc(m.name)}">View Details</button>
            </div>`,
-      })
-    )
+      });
+    })
     .join("")}</div>`;
+};
 
 const accountsHtml = (d) => `
   <table>
@@ -189,34 +216,6 @@ const accountsHtml = (d) => `
       .join("")}
   </table>
   <p class="note">active: ${esc(d.current.account)} · ${esc(d.current.email)}</p>`;
-
-// Who may borrow YOUR account. A table like accountsHtml rather than cards: there are no gauges
-// here, just a name, a state and one button.
-//
-// One button per row, never two, and it is always the one that would CHANGE something — Deny on an
-// allowed row, Allow on a blocked one. Same choice usageHtml makes when it renders no Switch at all
-// on the account you are already on: a button whose command is a no-op is worse than no button,
-// because the only way to find out it did nothing is to press it.
-const accessHtml = (people) =>
-  !people.length
-    ? EMPTY
-    : `<table>
-    <tr><th>Person</th><th>Access</th><th></th></tr>
-    ${people
-      .map(
-        (x) => `<tr>
-        <td>${esc(x.name)}</td>
-        <td><span class="dot ${x.allowed ? "on" : "off"}">●</span> ${x.allowed ? "allowed" : "blocked"}</td>
-        <td class="act">${
-          x.allowed
-            ? `<button data-kind="deny" data-name="${esc(x.name)}">Deny</button>`
-            : `<button data-kind="allow" data-name="${esc(x.name)}">Allow</button>`
-        }</td>
-      </tr>`
-      )
-      .join("")}
-  </table>
-  <p class="note">these people can borrow your account through the pool · claudex access</p>`;
 
 const statusHtml = (d) => `
   <div class="pills">
@@ -287,7 +286,6 @@ const HTML = {
   accounts: accountsHtml,
   // Key order is the tab order for ArrowLeft/Right, so it must match the markup order in
   // index.html — and PANELS[0] is the tab a bare URL opens.
-  access: accessHtml,
   status: statusHtml,
 };
 const PANELS = Object.keys(HTML);
@@ -312,7 +310,6 @@ const COUNT = {
   usage: (d) => arrange(d, opts()).length,
   pool: (d) => arrange(d, opts()).length,
   accounts: (d) => d.accounts.length,
-  access: (d) => d.length,
 };
 
 // null means "no count": either the panel fell back to raw text, or it never had one. A panel we
@@ -401,8 +398,8 @@ function show(name) {
     $(p).hidden = p !== name;
     $(`tab-${p}`).setAttribute("aria-selected", String(p === name));
   }
-  // Accounts and Access are tables and Health is not a list at all, so the controls would order
-  // nothing on any of them.
+  // Accounts is a table and Health is not a list at all, so the controls would order
+  // nothing on either.
   $("ctl").hidden = name !== "usage" && name !== "pool";
   updateMine(); // the tab decides which of the two commands "switch to mine" would run
 }
@@ -635,11 +632,11 @@ const FIRE = {
   update: () => ["/api/update/apply", { action: "apply" }, "updated — restarting…"],
 };
 
-// Every write this page can make: `claudex switch <account>` from a Usage card, `claudex pool use
-// <member>` from a Pool card, and `claudex access allow|deny <name>` from an Access row. Delegated
-// on <main> rather than per button for the reason given above — load() replaces every panel via
-// innerHTML, dropping element listeners. One listener covers all three panels; the pool detail
-// listener above stays separate because it opens a dialog and shares nothing with this.
+// Every write this page can make: `claudex switch <account>` from a Usage card, and `claudex pool
+// use <member>` / `claudex access allow|deny <name>` both from a Pool card. Delegated on <main>
+// rather than per button for the reason given above — load() replaces every panel via innerHTML,
+// dropping element listeners. One listener covers both panels; the pool detail listener above stays
+// separate because it opens a dialog and shares nothing with this.
 //
 // A function rather than the listener body because the header's "Switch to mine" needs exactly this
 // sequence but sits OUTSIDE <main>, so the delegation below can never reach it.
@@ -682,7 +679,7 @@ async function doAction(btn, kind, name) {
   }
 }
 
-// Matched on data-kind rather than a class: an Access row's button is not a "switch" by any reading,
+// Matched on data-kind rather than a class: an Allow/Deny button is not a "switch" by any reading,
 // and FIRE is already keyed on exactly this attribute. Nothing else inside <main> carries one — the
 // confirm dialog's Cancel/Confirm live outside it for that reason (see index.html).
 document.querySelector("main").addEventListener("click", (e) => {
