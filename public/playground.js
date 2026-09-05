@@ -105,3 +105,18 @@ export function findNode(id, nodes = TREE) {
   }
   return null;
 }
+
+// Depth-first find by `mutate` — the same key FIRE/ASK in app.js are keyed on — then substitute
+// {name} into that node's cli template. Lets a data-kind button show the exact command it runs
+// without duplicating the TREE's cli strings. Null for kinds with no CLI equivalent (e.g.
+// "update", "detail" — these don't correspond to any mutate leaf here).
+export function cliFor(kind, name, nodes = TREE) {
+  for (const n of nodes) {
+    if (n.mutate === kind) return `claudex ${n.cli.replace("{name}", name)}`;
+    if (n.children) {
+      const found = cliFor(kind, name, n.children);
+      if (found) return found;
+    }
+  }
+  return null;
+}

@@ -6,7 +6,7 @@ import { arrange, SORTS } from "./sort.js";
 import { mineTarget } from "./mine.js";
 import { consumingTarget } from "./consuming.js";
 import { autoswitchTarget } from "./autoswitch.js";
-import { TREE, childKind, namesFor, findNode } from "./playground.js";
+import { TREE, childKind, namesFor, findNode, cliFor } from "./playground.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) =>
@@ -149,8 +149,8 @@ const usageHtml = (rows) =>
         actions: r.active
           ? ""
           : `<div class="card-actions">
-               <button class="push-left" data-kind="remove" data-name="${esc(r.account)}">Remove</button>
-               <button data-kind="switch" data-name="${esc(r.account)}">Switch</button>
+               <button class="push-left" data-kind="remove" data-name="${esc(r.account)}" title="${esc(cliFor("remove", r.account))}">Remove</button>
+               <button data-kind="switch" data-name="${esc(r.account)}" title="${esc(cliFor("switch", r.account))}">Switch</button>
              </div>`,
       })
     )
@@ -181,8 +181,8 @@ const poolHtml = (members) => {
         allowed === undefined
           ? ""
           : allowed
-          ? `<button class="push-left" data-kind="deny" data-name="${esc(m.name)}">Deny</button>`
-          : `<button class="push-left" data-kind="allow" data-name="${esc(m.name)}">Allow</button>`;
+          ? `<button class="push-left" data-kind="deny" data-name="${esc(m.name)}" title="${esc(cliFor("deny", m.name))}">Deny</button>`
+          : `<button class="push-left" data-kind="allow" data-name="${esc(m.name)}" title="${esc(cliFor("allow", m.name))}">Allow</button>`;
       return card({
         on: m.sharing,
         sel: m.marked,
@@ -203,7 +203,7 @@ const poolHtml = (members) => {
         // button reuses the same class for the same reason.
         actions: `<div class="card-actions">
              ${accessBtn}
-             ${m.marked ? "" : `<button data-kind="pool" data-name="${esc(m.name)}">Switch</button>`}
+             ${m.marked ? "" : `<button data-kind="pool" data-name="${esc(m.name)}" title="${esc(cliFor("pool", m.name))}">Switch</button>`}
              <button class="detail" data-name="${esc(m.name)}">View Details</button>
            </div>`,
       });
@@ -723,7 +723,7 @@ function pgRenderChildren(node, depth) {
     ? names
         .map(
           (name) =>
-            `<button class="pg-item pg-leaf" style="--depth:${depth}" data-node="${esc(node.id)}::${esc(name)}">${esc(name)}</button>`
+            `<button class="pg-item pg-leaf" style="--depth:${depth}" data-node="${esc(node.id)}::${esc(name)}" title="claudex ${esc(node.cli.replace("{name}", name))}">${esc(name)}</button>`
         )
         .join("")
     : `<p class="note pg-empty" style="--depth:${depth}">no known names yet — refresh first</p>`;
@@ -736,7 +736,7 @@ function pgRenderNode(node, depth) {
   const kind = childKind(node);
   const expanded = kind && pgExpanded.has(node.id);
   const arrow = kind ? (expanded ? "▾" : "▸") : "";
-  let html = `<button class="pg-item" style="--depth:${depth}" data-node="${esc(node.id)}">
+  let html = `<button class="pg-item" style="--depth:${depth}" data-node="${esc(node.id)}"${node.cli ? ` title="claudex ${esc(node.cli)}"` : ""}>
     <span class="pg-label">${arrow ? `<span class="pg-caret">${arrow}</span> ` : ""}${esc(node.label)}</span>
     ${node.summary ? `<span class="pg-summary">${esc(node.summary)}</span>` : ""}
   </button>`;
@@ -933,7 +933,7 @@ function updateMine() {
   if (!t) return;
   btn.dataset.kind = t.kind;
   btn.dataset.name = t.name;
-  btn.title = t.kind === "pool" ? `use ${t.name}'s quota` : `switch to ${t.name}`;
+  btn.title = cliFor(t.kind, t.name);
 }
 
 // Direct listener, not delegated: like #refresh, this button outlives every innerHTML pass.
@@ -951,7 +951,7 @@ function updateConsuming() {
   if (!t) return;
   btn.dataset.kind = t.kind;
   btn.textContent = t.label;
-  btn.title = t.kind === "start" ? "start borrowing from the pool" : "stop borrowing from the pool";
+  btn.title = cliFor(t.kind);
 }
 
 // Direct listener, not delegated: like #mine and #refresh, this button outlives every innerHTML pass.
@@ -969,7 +969,7 @@ function updateAutoswitch() {
   if (!t) return;
   btn.dataset.kind = t.kind;
   btn.textContent = t.label;
-  btn.title = t.kind === "on" ? "enable automatic account switching" : "disable automatic account switching";
+  btn.title = cliFor(t.kind);
 }
 
 // Direct listener, not delegated: like #mine and #refresh, this button outlives every innerHTML pass.
