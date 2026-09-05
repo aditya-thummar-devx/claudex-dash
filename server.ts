@@ -5,16 +5,16 @@
 // it came from, so a parser that stops recognising claudex's output degrades that panel to plain text
 // instead of showing wrong numbers.
 //
-// Six POSTs back the page's buttons: `claudex switch`, `claudex pool use`,
+// Seven POSTs back the page's buttons: `claudex switch`, `claudex remove`, `claudex pool use`,
 // `claudex access allow|deny`, `claudex pool start|stop`, `claudex autoswitch on|off`, and this
 // dashboard's own `git pull` to update itself. They are the only routes that change anything, and
-// they are held to the same rules — same-origin only, JSON content type only, and — for the three
+// they are held to the same rules — same-origin only, JSON content type only, and — for the four
 // that take a name — a name that claudex itself already listed, in the namespace of the command about
 // to receive it. The other three take no name at all; see the POSTS table below.
 import { join } from "node:path";
 import {
   captureAll, captureMember, switchAccount, poolUse, accessSet, poolStart, poolStop,
-  autoswitchOn, autoswitchOff,
+  autoswitchOn, autoswitchOff, removeAccount,
 } from "./src/claudex-dash.ts";
 import type { Capture } from "./src/claudex-dash.ts";
 import { checkForUpdate, applyUpdate } from "./src/update.ts";
@@ -66,19 +66,25 @@ function pair(a: Capture, b: Capture, data: unknown): Panel {
 // Both spellings of this machine — see src/guard.ts for why refusing one buys nothing.
 const ORIGINS = [`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`];
 
-// The five mutating routes, one row each. A table rather than branches because the rows must be
+// The six mutating routes, one row each. A table rather than branches because the rows must be
 // read side by side: each names the list its `name` has to appear in, and those lists are DIFFERENT
-// NAMESPACES that must never be crossed. `switch` wants the short profile name from `claudex list`
-// ("brian"); `pool use` wants the dotted pool name from `claudex pool members` ("alice.stoneham");
-// `access allow|deny` wants a dotted name too, but off `claudex access` — a separate list that
-// merely looks like the pool one. Validating each against its own source enforces all of that for
-// free, and puts the pairing somewhere it can be checked at a glance. `pool start|stop` and
-// `autoswitch on|off` carry no name at all — `known: null` marks a route as having nobody to check,
-// see the handler below.
+// NAMESPACES that must never be crossed. `switch` and `remove` both want the short profile name from
+// `claudex list` ("brian"); `pool use` wants the dotted pool name from `claudex pool members`
+// ("alice.stoneham"); `access allow|deny` wants a dotted name too, but off `claudex access` — a
+// separate list that merely looks like the pool one. Validating each against its own source enforces
+// all of that for free, and puts the pairing somewhere it can be checked at a glance. `pool start|stop`
+// and `autoswitch on|off` carry no name at all — `known: null` marks a route as having nobody to
+// check, see the handler below.
 const POSTS = {
   "/api/switch": {
     known: (c: Record<string, Capture>) => parseList(c.list.raw)?.map((a) => a.account),
     run: (name: string) => switchAccount(name),
+  },
+  // Unlike every other row here, this one has no way back — see the carve-out note on the ban-list
+  // comment in src/claudex-dash.ts. Same namespace and same gate as /api/switch above.
+  "/api/remove": {
+    known: (c: Record<string, Capture>) => parseList(c.list.raw)?.map((a) => a.account),
+    run: (name: string) => removeAccount(name),
   },
   "/api/pool/use": {
     known: (c: Record<string, Capture>) => parsePoolMembers(c.poolMembers.raw)?.map((m) => m.name),
@@ -182,12 +188,12 @@ const config = {
     }
 
     // ---- the mutating routes ----
-    // Everything above this point only reads. These five change something — which account is
-    // logged in, who may borrow this one, whether it is currently borrowing from the pool, or
-    // whether it auto-switches on high usage — so they carry the guards the GETs do not need: a
-    // same-origin check (see src/guard.ts — localhost is reachable from any page in this browser), a
-    // JSON content type (which forces a CORS preflight this server never answers), and — for the
-    // three that take a name — the same gate as /api/pool/member above.
+    // Everything above this point only reads. These six change something — which account is
+    // logged in, whether an account exists at all, who may borrow this one, whether it is currently
+    // borrowing from the pool, or whether it auto-switches on high usage — so they carry the guards
+    // the GETs do not need: a same-origin check (see src/guard.ts — localhost is reachable from any
+    // page in this browser), a JSON content type (which forces a CORS preflight this server never
+    // answers), and — for the four that take a name — the same gate as /api/pool/member above.
     if (req.method === "POST" && url.pathname in POSTS) {
       if (!sameOrigin(req.headers.get("origin"), ORIGINS)) {
         return Response.json({ error: "bad origin" }, { status: 403 });

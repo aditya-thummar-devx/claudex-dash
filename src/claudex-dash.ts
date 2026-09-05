@@ -37,7 +37,7 @@ const TTL_MS = 60_000;
 // READ-ONLY ALLOWLIST. Every arg array below is a hardcoded constant — no user input ever reaches
 // argv, and spawn runs without a shell.
 //
-// NEVER add: login · add · remove · rename · pool join
+// NEVER add: login · add · rename · pool join
 //            sessions share/pull · keep-warm · refresh · autoswitch run · update · access remove
 // Those create or destroy profiles, move tokens between people, or erase someone from your access
 // list with no way back from a web page. None of them belong behind a button.
@@ -58,13 +58,22 @@ const TTL_MS = 60_000;
 // manual trigger that can switch the active account right now, not a persisted setting, and that
 // still doesn't belong behind a button. See autoswitchOn()/autoswitchOff() below.
 //
-// Four commands live OUTSIDE this table because they take an argument:
+// `remove` used to be on that list wholesale too, and unlike the three carve-outs above, it did NOT
+// move because it turned out to be reversible — it is not. `remove <name>` deletes a saved profile's
+// token for good; there is no undo from this page, and none from the terminal either short of
+// logging into that account again from scratch. It is exempted anyway, by an explicit, informed
+// product decision to ship a real delete rather than a client-side hide that only pretends the
+// account is gone while its token still sits there, switchable — that's a worse trap than a button
+// that does exactly what it says. See removeAccount() below.
+//
+// Five commands live OUTSIDE this table because they take an argument:
 //   `pool member <name>`        (read-only)  — captureMember()
 //   `switch <name>`             (mutating)   — switchAccount()
 //   `pool use <name>`           (mutating)   — poolUse()
 //   `access allow|deny <name>`  (mutating)   — accessSet()
+//   `remove <name>`             (mutating)   — removeAccount()
 // The rule they share: the name is user-supplied, so the caller MUST validate it against a list
-// claudex itself printed before it reaches argv. The three mutating ones additionally stay out of
+// claudex itself printed before it reaches argv. The four mutating ones additionally stay out of
 // COMMANDS (captureAll() would run them on every page load) and out of capture() (a 60s TTL would
 // silently no-op a second switch within the minute).
 export const COMMANDS = {
@@ -170,6 +179,11 @@ async function action(args: readonly string[]): Promise<ActionResult> {
 // we closed, and the HTTP request would hang until the timeout kills it.
 export const switchAccount = (name: string) => action(["switch", name, "--force"]);
 export const poolUse = (name: string) => action(["pool", "use", name]);
+
+// Same untrusted-name rule as switchAccount(): name must already appear in the list `claudex list`
+// itself printed. server.ts's /api/remove validates it against that same parseList() output — see
+// the carve-out note on the ban-list comment above for why this one is allowed to be irreversible.
+export const removeAccount = (name: string) => action(["remove", name, "--force"]);
 
 // The one mutating command this file was originally written to refuse — see the note on COMMANDS.
 // Two things keep it inside the same guarantee as the other two rather than widening it:

@@ -208,7 +208,7 @@ pre.raw {
 
 .card-actions { margin-top: 10px; display: flex; justify-content: flex-end; gap: 6px; }
 .card-actions button { padding: 4px 10px; font-size: 12px; }
-.card-actions .access-btn { margin-right: auto; }
+.card-actions .push-left { margin-right: auto; }
 
 #toasts {
   position: fixed; inset: 60px auto auto 50%; transform: translateX(-50%);
@@ -786,18 +786,22 @@ html[data-theme="scifi"] button[data-kind="on"]:hover {
 [data-theme="scifi"] button[data-kind="deny"],
 [data-theme="scifi"] button[data-kind="stop"],
 [data-theme="scifi"] button[data-kind="off"],
+[data-theme="scifi"] button[data-kind="remove"],
 html[data-theme="scifi"] button[data-kind="deny"],
 html[data-theme="scifi"] button[data-kind="stop"],
-html[data-theme="scifi"] button[data-kind="off"] {
+html[data-theme="scifi"] button[data-kind="off"],
+html[data-theme="scifi"] button[data-kind="remove"] {
   border-color: rgba(255, 0, 85, 0.4);
   color: var(--danger);
 }
 [data-theme="scifi"] button[data-kind="deny"]:hover,
 [data-theme="scifi"] button[data-kind="stop"]:hover,
 [data-theme="scifi"] button[data-kind="off"]:hover,
+[data-theme="scifi"] button[data-kind="remove"]:hover,
 html[data-theme="scifi"] button[data-kind="deny"]:hover,
 html[data-theme="scifi"] button[data-kind="stop"]:hover,
-html[data-theme="scifi"] button[data-kind="off"]:hover {
+html[data-theme="scifi"] button[data-kind="off"]:hover,
+html[data-theme="scifi"] button[data-kind="remove"]:hover {
   border-color: var(--danger);
   background: rgba(255, 0, 85, 0.15);
   box-shadow: 0 0 14px var(--danger-glow);

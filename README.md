@@ -52,10 +52,13 @@ Everything on Usage / Pool can be sorted, and filtered to Max 5x accounts only.
 
 ## What it can change
 
-Five things, each behind a confirmation:
+Six things, each behind a confirmation:
 
 - **Switch** on a Usage card → `claudex switch <account> --force`. Moves this machine between your
   own saved accounts.
+- **Remove** on a Usage card → `claudex remove <account> --force`. Permanently deletes that saved
+  profile and its token. Unlike everything else on this page, there is no undo from here — you'd
+  need to log into that account again from scratch to get it back.
 - **Switch** on a Pool card → `claudex pool use <member>`. Points your traffic at a coworker's
   token. Your usage counts against *their* limit and shows up as "borrowed" in their breakdown.
   This is the one worth reading the dialog for.
@@ -73,16 +76,23 @@ Five things, each behind a confirmation:
 Enter confirms, Esc cancels.
 
 Everything else is read-only, and the command allowlist is enforced in code
-(`src/claudex-dash.ts`). It will never run: `login` · `add` · `remove` · `rename` ·
+(`src/claudex-dash.ts`). It will never run: `login` · `add` · `rename` ·
 `pool join` · `access remove` · `sessions share/pull` · `keep-warm` · `refresh` ·
-`autoswitch run` · `update`. Those create or destroy profiles, move tokens between people, or erase
-someone from your access list with no way back from a web page — none of them belong behind a button.
+`autoswitch run` · `update`. Those create profiles, move tokens between people, or erase someone from
+your access list with no way back from a web page — none of them belong behind a button.
 
 `access remove` is the odd one on that list: `access` itself *is* reachable, because reading the list
 and flipping a row between allowed and blocked are both recoverable from the page you did them on.
 Removing a person is not — you'd need the terminal to put them back — so only `allow` and `deny` are
 wired up, and the two verbs are a literal union in the code rather than a value passed through from
 the request.
+
+`remove` is the newer exception, and unlike `access remove` it is not staying banned. It used to be
+grouped with the rest of that list for the same reason: no way back from a web page. That is still
+true — `claudex remove <account> --force` deletes a saved profile's token for good, and this page
+cannot put it back any more than it could before. It is wired up anyway, by an explicit product
+decision to ship a real delete rather than a client-side hide that only pretends the account is gone
+while its token still sits there, switchable.
 
 ## Privacy
 

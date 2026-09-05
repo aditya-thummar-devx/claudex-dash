@@ -139,11 +139,16 @@ const usageHtml = (rows) =>
         name: esc(r.account),
         meta: esc(r.tier),
         gauges: gauge("session", r.session) + gauge("week", r.week),
-        // Nothing to switch to on the account you are already on, so the row is not rendered at
-        // all. card() defaults actions to "", so this leaves no empty .card-actions behind.
+        // Nothing to do on the account you are already on — no account to switch to, and removing
+        // your own active profile is one you'd want to switch off of first — so both buttons are
+        // skipped there. card() defaults actions to "", so this leaves no empty .card-actions behind.
+        // push-left (same class poolHtml's accessBtn uses) puts Remove on the left with auto-margin
+        // space to Switch, and data-kind="remove" gets the same destructive red as Deny/Stop/Off in
+        // the scifi theme — Remove reads as the same kind of action, not a one-off style.
         actions: r.active
           ? ""
           : `<div class="card-actions">
+               <button class="push-left" data-kind="remove" data-name="${esc(r.account)}">Remove</button>
                <button data-kind="switch" data-name="${esc(r.account)}">Switch</button>
              </div>`,
       })
@@ -175,8 +180,8 @@ const poolHtml = (members) => {
         allowed === undefined
           ? ""
           : allowed
-          ? `<button class="access-btn" data-kind="deny" data-name="${esc(m.name)}">Deny</button>`
-          : `<button class="access-btn" data-kind="allow" data-name="${esc(m.name)}">Allow</button>`;
+          ? `<button class="push-left" data-kind="deny" data-name="${esc(m.name)}">Deny</button>`
+          : `<button class="push-left" data-kind="allow" data-name="${esc(m.name)}">Allow</button>`;
       return card({
         on: m.sharing,
         sel: m.marked,
@@ -191,9 +196,10 @@ const poolHtml = (members) => {
         // is claudex's ▶, whose exact meaning parse.ts:165 records as undocumented, so treating it
         // as "already serving you" is an inference. A safe one: the worst a wrong guess does is
         // hide a button whose command (`pool use` on the current member) is a no-op.
-        // access-btn (left) gets margin-right:auto in CSS, which shoves Switch/View Details to the
+        // push-left (left) gets margin-right:auto in CSS, which shoves Switch/View Details to the
         // right — a space-between layout without a wrapper div, and one that collapses back to a
-        // plain right-aligned row when accessBtn is "" (nothing to push against).
+        // plain right-aligned row when accessBtn is "" (nothing to push against). Usage's Remove
+        // button reuses the same class for the same reason.
         actions: `<div class="card-actions">
              ${accessBtn}
              ${m.marked ? "" : `<button data-kind="pool" data-name="${esc(m.name)}">Switch</button>`}
@@ -560,6 +566,14 @@ const ASK = {
     `Logs this machine into “${n}”. Claude Code sessions started after this use that account.`,
     "Switch",
   ],
+  // Worded harder than everything else in this table on purpose: every other entry here is
+  // reversible from this same page — this one is not. There is no undo from this page, and none
+  // from the terminal either short of logging into that account again from scratch.
+  remove: (n) => [
+    `Remove ${n}?`,
+    `Permanently deletes the “${n}” profile and its saved token. This cannot be undone from this page — you would need to log into ${n} again from scratch to get it back.`,
+    "Remove",
+  ],
   pool: (n) => [
     `Use ${n}’s quota?`,
     `Routes your Claude traffic through ${n}’s token instead of your own. Your usage counts against their limit and shows up as “borrowed” in their pool breakdown.`,
@@ -620,6 +634,7 @@ const ASK = {
 // exactly these three values and nothing else. Any new write is a row here plus a row in ASK.
 const FIRE = {
   switch: (n) => ["/api/switch", { name: n }, `switched to ${n}`],
+  remove: (n) => ["/api/remove", { name: n }, `${n} removed`],
   pool: (n) => ["/api/pool/use", { name: n }, `switched to ${n}`],
   allow: (n) => ["/api/access", { name: n, action: "allow" }, `${n} allowed`],
   deny: (n) => ["/api/access", { name: n, action: "deny" }, `${n} blocked`],
