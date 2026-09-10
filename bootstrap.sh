@@ -53,7 +53,16 @@ cat > "$PLIST" <<PLIST_EOF
   </array>
   <key>WorkingDirectory</key><string>$ROOT</string>
   <key>EnvironmentVariables</key>
-  <dict><key>PORT</key><string>$PORT</string></dict>
+  <dict>
+    <key>PORT</key><string>$PORT</string>
+    <!-- launchd's own PATH/locale are near-empty (no ~/.local/bin, no LANG/LC_ALL) — claudex
+         inherits this stripped env when server.ts spawns it, which is why it can stall or crash here
+         even though it runs fine from an interactive shell. Bake in this install's own shell values,
+         same reasoning as $BUN/$ROOT above. -->
+    <key>PATH</key><string>$PATH</string>
+    <key>LANG</key><string>${LANG:-en_US.UTF-8}</string>
+    <key>LC_ALL</key><string>${LC_ALL:-en_US.UTF-8}</string>
+  </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$ROOT/launchd.log</string>

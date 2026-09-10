@@ -384,6 +384,9 @@ dialog#detail[open], dialog#settings[open] {
   background: var(--bg); color: var(--ink);
 }
 #gate[open] { display: grid; align-content: center; justify-items: center; gap: 14px; }
+/* Same specificity as [open] above (ID+attribute each) — source order breaks the tie, so this must
+   stay below it to win whenever app.js sets .hidden while the dialog is still logically open. */
+#gate[hidden] { display: none; }
 #gate h2 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
 #gate .body { max-width: min(680px, 92vw); max-height: 60vh; overflow: auto; }
 #gate .gate-a { margin: 14px 0 0; text-align: center; }

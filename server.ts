@@ -128,6 +128,10 @@ const config = {
   // 127.0.0.1 ONLY. The pool panel renders coworkers' email addresses and usage figures; this must
   // never be reachable off this machine.
   hostname: "127.0.0.1",
+  // Bun's own default (10s) races src/claudex-dash.ts's ACTION_TIMEOUT_MS (30s) — a mutating spawn
+  // that takes 11-30s would have Bun kill the connection before the app ever gets to answer
+  // gracefully with { ok: false }. Set above the longest spawn so our own timeout always wins.
+  idleTimeout: 35,
   async fetch(req: Request) {
     const url = new URL(req.url);
 

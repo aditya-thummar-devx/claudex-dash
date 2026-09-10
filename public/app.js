@@ -12,6 +12,23 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+// Hand-synced with src/claudex-dash.ts's TIMEOUT_MS/ACTION_TIMEOUT_MS — same precedent as
+// playground.test.ts's MUTATE_KEYS hand-syncing app.js's own ASK/FIRE tables.
+const READ_TIMEOUT_MS = 10_000;
+const ACTION_TIMEOUT_MS = 30_000;
+
+// Ticks render(secondsLeft) immediately then every 1000ms down to 0. Callers must call the returned
+// stop() as soon as a real result lands, win or lose — nothing here stops itself.
+function countdown(durationMs, render) {
+  let s = Math.ceil(durationMs / 1000);
+  render(s);
+  const id = setInterval(() => {
+    s = Math.max(0, s - 1);
+    render(s);
+  }, 1000);
+  return () => clearInterval(id);
+}
+
 // Every message and error goes here — none of them occupy layout space, so a switch result or a
 // parse warning cannot shove the cards it sits above. The container is a popover, which puts it in
 // the top layer: a plain fixed div would be buried under the detail <dialog>'s backdrop. A <button>
@@ -339,10 +356,14 @@ async function load(fresh) {
   const btn = $("refresh");
   btn.disabled = true;
   details.clear(); // numbers behind View Details must not outlive the gauges they sat next to
-  $("age").textContent = "loading…";
+  const stop = countdown(READ_TIMEOUT_MS, (s) => {
+    $("age").textContent = `loading… ${s}s`;
+    if (gate.open) gateBody(`<p class="note">reading claudex… ${s}s</p>`);
+  });
   try {
     const r = await fetch(`/api/all${fresh ? "?fresh=1" : ""}`);
     const d = await r.json();
+    stop();
 
     // A missing claudex never reaches the catch below: capture() swallows spawn and timeout
     // failures into { raw: "", error } and the route still answers 200 with four ok:false panels.
@@ -379,6 +400,7 @@ async function load(fresh) {
       checkForUpdates(true); // fire-and-forget; this block runs exactly once, ever
     }
   } catch (e) {
+    stop();
     // The header slot only marks the state — it is styled like "cached 12s ago" and would bury the
     // reason. That goes to the toast, unless the gate is still up: a toast over it is painted but
     // inert, because top-layer participation controls painting, not interactivity.
@@ -399,6 +421,11 @@ function show(name) {
   }
   // Health and Playground aren't lists at all, so the controls would order nothing on either.
   $("ctl").hidden = name !== "usage" && name !== "pool";
+  // The boot gate stays up over Usage/Pool/Health until the first load succeeds, but Playground
+  // never depends on that fetch (its tree is static, its reads/writes are their own routes) — so
+  // stepping onto that tab steps the gate out of the way instead of leaving it stuck unusable
+  // behind an opaque overlay. Leaving any other tab while still booting puts it right back.
+  gate.hidden = gate.open && name === "playground";
   updateMine(); // the tab decides which of the two commands "switch to mine" would run
 }
 
@@ -675,9 +702,10 @@ async function doAction(btn, kind, name) {
   const [, , done] = FIRE[kind](name);
   const label = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "working…";
+  const stop = countdown(ACTION_TIMEOUT_MS, (s) => (btn.textContent = `working… ${s}s`));
   try {
     await fireMutation(kind, name);
+    stop();
     // Unkeyed on purpose: load() below clears only keyed toasts, so this survives the re-render.
     toast(done);
     await load(true);
@@ -689,6 +717,7 @@ async function doAction(btn, kind, name) {
     // those three disables them for good — paint() relabels the button but never re-enables it.
     btn.disabled = false;
   } catch (err) {
+    stop();
     toast(err.message, true);
     btn.disabled = false;
     btn.textContent = label;
@@ -748,14 +777,18 @@ function renderPgTree() {
   pgRight.innerHTML = TREE.map((n) => pgRenderNode(n, 0)).join("");
 }
 
-function pgLogStart(cli) {
-  const entry = { cmd: cli, status: "running", output: "" };
+function pgLogStart(cli, durationMs) {
+  const entry = { cmd: cli, status: "running", output: "", secondsLeft: 0 };
   pgHistory.push(entry);
-  renderPgHistory();
+  entry.stop = countdown(durationMs, (s) => {
+    entry.secondsLeft = s;
+    renderPgHistory();
+  });
   return entry;
 }
 
 function pgLogFinish(entry, ok, output) {
+  entry.stop();
   entry.status = ok ? "ok" : "bad";
   entry.output = output;
   renderPgHistory();
@@ -768,7 +801,7 @@ function renderPgHistory() {
     .map(
       (e) => `<div class="pg-entry${e.status === "bad" ? " bad" : ""}">
         <div class="pg-cmd">claudex ${esc(e.cmd)}</div>
-        <pre class="raw">${esc(e.status === "running" ? "running…" : e.output)}</pre>
+        <pre class="raw">${esc(e.status === "running" ? `running… ${e.secondsLeft}s` : e.output)}</pre>
       </div>`
     )
     .join("");
@@ -778,7 +811,7 @@ function renderPgHistory() {
 // The three ways a leaf actually runs. Every one of them is a route that already exists for another
 // tab's button — Playground adds no new way to reach claudex beyond the one read route in server.ts.
 async function pgRunRead(node) {
-  const entry = pgLogStart(node.cli);
+  const entry = pgLogStart(node.cli, READ_TIMEOUT_MS);
   try {
     const r = await fetch(`/api/playground/read?cmd=${encodeURIComponent(node.cmd)}`);
     const d = await r.json();
@@ -791,7 +824,7 @@ async function pgRunRead(node) {
 
 // Same route showMember() already uses for View Details — always fresh, same as every Playground run.
 async function pgRunMemberRead(node, name) {
-  const entry = pgLogStart(node.cli.replace("{name}", name));
+  const entry = pgLogStart(node.cli.replace("{name}", name), READ_TIMEOUT_MS);
   try {
     const r = await fetch(`/api/pool/member?name=${encodeURIComponent(name)}&fresh=1`);
     const d = await r.json();
@@ -805,7 +838,7 @@ async function pgRunMemberRead(node, name) {
 // Same ask-then-fire as doAction(), just logged instead of toasted — see fireMutation() above.
 async function pgRunMutation(node, name) {
   if (!(await ask(...ASK[node.mutate](name)))) return;
-  const entry = pgLogStart(node.cli.replace("{name}", name ?? ""));
+  const entry = pgLogStart(node.cli.replace("{name}", name ?? ""), ACTION_TIMEOUT_MS);
   try {
     const d = await fireMutation(node.mutate, name);
     pgLogFinish(entry, true, d.raw?.trim() || "(no output)");

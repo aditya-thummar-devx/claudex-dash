@@ -62,9 +62,10 @@
     </svg>
   </button>
 </header>
-<!-- Fixed to the bottom of the viewport (styles.css). Own inert, same reason as #hdr: not
-     focusable/clickable until app.js lifts it next to gate.close(). -->
-<nav class="tabs" id="tabbar" role="tablist" aria-label="claudex-dash panels" inert>
+<!-- Fixed to the bottom of the viewport (styles.css). Never inert, unlike #hdr/#app: the Playground
+     tab must stay reachable even while the boot gate is up — see app.js's show(), which hides the
+     gate itself whenever Playground is the active tab. -->
+<nav class="tabs" id="tabbar" role="tablist" aria-label="claudex-dash panels">
   <button role="tab" id="tab-usage"    aria-controls="usage"    aria-selected="false">Usage<span class="count"></span></button>
   <button role="tab" id="tab-pool"     aria-controls="pool"     aria-selected="true"
           title="Pool members">Pool<span class="count"></span></button>
@@ -73,7 +74,7 @@
   <button role="tab" id="tab-status"   aria-controls="status"   aria-selected="false"
           aria-label="Pool status &amp; health" title="Pool status &amp; health">Health</button>
 </nav>
-<main id="app" inert>
+<main id="app">
   <section id="usage"    role="tabpanel" aria-labelledby="tab-usage" hidden><div class="body"></div></section>
   <section id="pool"     role="tabpanel" aria-labelledby="tab-pool"><div class="body"></div></section>
   <!-- Not one of the /api/all panels — its own tab machinery in app.js (ALL_TABS), its own data
