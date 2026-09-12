@@ -18,11 +18,11 @@
 // PER-MACHINE OVERRIDE: the matching FIREBASE_* env vars (see .env.example) override these
 // field-by-field, and CLAUDEX_DASH_ANALYTICS=off disables analytics on a single machine regardless.
 export const DEFAULT_FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: "",
-  measurementId: "",
+  apiKey: "AIzaSyDg4zNNSDUrYIBIb3RprLNFimE1y1BCE6I",
+  authDomain: "claudex-dash.firebaseapp.com",
+  projectId: "claudex-dash",
+  storageBucket: "claudex-dash.firebasestorage.app",
+  messagingSenderId: "255450879181",
+  appId: "1:255450879181:web:268cc5f980c4b77f784584",
+  measurementId: "G-B38CMHSFP4",
 };
