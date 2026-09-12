@@ -22,6 +22,7 @@ import { checkForUpdate, applyUpdate } from "./src/update.ts";
 import { sameOrigin } from "./src/guard.ts";
 import { resolveMe, whoAmI } from "./src/me.ts";
 import { clientContext } from "./src/client-context.ts";
+import { DEFAULT_FIREBASE_CONFIG } from "./src/firebase-config.ts";
 import {
   parseUsage, parseList, parseCurrent, parsePoolStatus, parseDoctor, parsePoolMembers,
   parseMemberDetail, parseAccess,
@@ -39,23 +40,27 @@ const PUBLIC_DIR = join(import.meta.dir, "public");
 // Finding nobody is an ordinary state: /api/all reports me:null and the page shows no button.
 const ME = whoAmI(process.env.CLAUDEX_ME ?? "");
 
-// Firebase Analytics config, read from the environment (Bun auto-loads .env, which is git-ignored —
-// see .env.example). These are the client-side "public" Firebase keys and are safe to hand to the
+// Firebase Analytics config. The baseline ships committed in src/firebase-config.ts so every
+// install — including a fresh `curl … bootstrap.sh | bash`, which clones only tracked files and
+// writes no .env — picks it up. Per-machine FIREBASE_* env vars (Bun auto-loads .env) override it
+// field by field. These are the client-side "public" Firebase keys and are safe to hand to the
 // browser; the /api/analytics-config route below returns them. Analytics stays a complete no-op
-// unless a full config is present AND the local kill-switch is not set to "off" — so the whole
-// feature can ship dark and only lights up once a real project is wired in.
+// unless a full config is present AND the local kill-switch is not set to "off" — so with the
+// committed defaults blank the feature ships dark and only lights up once real values land in
+// src/firebase-config.ts (or the env).
 //
 // The kill-switch is the LOCAL override; a Remote Config flag (read client-side) is the remote one.
 // "off" is the only value that disables — anything else (unset, "on", "1") leaves analytics on.
 function firebaseConfig() {
+  const d = DEFAULT_FIREBASE_CONFIG;
   const cfg = {
-    apiKey: process.env.FIREBASE_API_KEY ?? "",
-    authDomain: process.env.FIREBASE_AUTH_DOMAIN ?? "",
-    projectId: process.env.FIREBASE_PROJECT_ID ?? "",
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET ?? "",
-    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID ?? "",
-    appId: process.env.FIREBASE_APP_ID ?? "",
-    measurementId: process.env.FIREBASE_MEASUREMENT_ID ?? "",
+    apiKey: process.env.FIREBASE_API_KEY ?? d.apiKey,
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN ?? d.authDomain,
+    projectId: process.env.FIREBASE_PROJECT_ID ?? d.projectId,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET ?? d.storageBucket,
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID ?? d.messagingSenderId,
+    appId: process.env.FIREBASE_APP_ID ?? d.appId,
+    measurementId: process.env.FIREBASE_MEASUREMENT_ID ?? d.measurementId,
   };
   // measurementId is what routes events to the GA4 property, so it is required alongside the
   // identity trio; without any one of these the SDK cannot report and we treat config as absent.
