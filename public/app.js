@@ -679,13 +679,6 @@ const ASK = {
     "Turns off automatic account switching. You'll switch accounts yourself when usage gets high.",
     "Disable",
   ],
-  // No coworker's name either — the parameter carries the target commit SHA instead, since that's
-  // the one thing worth showing before pulling it.
-  update: (sha) => [
-    "Update available",
-    `commit ${sha} is available. This pulls the latest code and restarts the server — it comes back up on its own.`,
-    "Update now",
-  ],
 };
 
 // Where each kind posts to, what it sends, and what to say when it lands. Split from ASK so that
@@ -703,6 +696,8 @@ const FIRE = {
   stop: () => ["/api/pool/toggle", { action: "stop" }, "consuming off"],
   on: () => ["/api/autoswitch/toggle", { action: "on" }, "autoswitch on"],
   off: () => ["/api/autoswitch/toggle", { action: "off" }, "autoswitch off"],
+  // The one exception to "a row here plus a row in ASK": updates auto-apply with no confirm, so
+  // there is deliberately no ASK.update. Driven from its own path (fireUpdate), not doAction.
   update: () => ["/api/update/apply", { action: "apply" }, "updated — restarting…"],
 };
 
@@ -976,11 +971,12 @@ async function checkForUpdates(auto) {
     if (d.upToDate) {
       setUpdateStatus(`up to date · you're on ${d.current}`);
     } else {
+      // No confirmation: an available update is applied straight away — the user has no reject
+      // step. Both callers (the boot auto-check and the manual button) funnel through here, so
+      // both auto-apply. fireUpdate() owns the "updating…" feedback from here on.
       setUpdateStatus(`commit ${d.latest} available · you're on ${d.current}`);
-      if (await ask(...ASK.update(d.latest))) {
-        if (updateBtn) updateBtn.textContent = "Updating…";
-        await fireUpdate();
-      }
+      if (updateBtn) updateBtn.textContent = "Updating…";
+      await fireUpdate();
     }
   } catch (err) {
     track(EVENTS.UPDATE_CHECK, { outcome: "error", source: auto ? "auto" : "manual" });
@@ -1000,6 +996,12 @@ async function checkForUpdates(auto) {
 // failure right under the success message. So it just settles the status line and stops there.
 async function fireUpdate() {
   const [url, body, done] = FIRE.update();
+  // One keyed toast carries the whole update: "updating…" the moment it starts (there's no confirm
+  // step to signal it any more), then swapped in place for the success/error message on the same
+  // "update" key. Keyed, so a second attempt replaces rather than stacks; unaffected by load()'s
+  // keyed-toast sweep since this path deliberately never reloads (server is about to exit).
+  setUpdateStatus("updating…");
+  toast("updating…", false, "update");
   try {
     const r = await fetch(url, {
       method: "POST",
@@ -1009,11 +1011,11 @@ async function fireUpdate() {
     const d = await r.json();
     if (!r.ok || !d.ok) throw new Error(d.error || d.raw || `HTTP ${r.status}`);
     track(EVENTS.UPDATE_APPLY, { outcome: "success" });
-    toast(done);
+    toast(done, false, "update");
     setUpdateStatus("restarting…");
   } catch (err) {
     track(EVENTS.UPDATE_APPLY, { outcome: "error" });
-    toast(err.message, true);
+    toast(err.message, true, "update");
     setUpdateStatus(`update failed: ${err.message}`);
   }
 }
