@@ -7,6 +7,15 @@ import { mineTarget } from "./mine.js";
 import { consumingTarget } from "./consuming.js";
 import { autoswitchTarget } from "./autoswitch.js";
 import { TREE, childKind, namesFor, findNode, cliFor } from "./playground.js";
+import { EVENTS, KIND_EVENT } from "./analytics.js";
+import { initTelemetry, track, trackError, setUserContext, setGlobals } from "./telemetry.js";
+
+// Which error_type an unparseable/failed panel belongs to, read off claudex's own error string.
+// Keeps the app_error stream's enum meaningful without the call sites having to know the taxonomy.
+const errorType = (msg) =>
+  /tim(e|ed)\s*out|timeout/i.test(msg || "") ? "timeout"
+  : /unrecognis|unrecogniz/i.test(msg || "") ? "parse_error"
+  : "load_failure";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) =>
@@ -51,6 +60,9 @@ const gateBody = (html) => (gate.querySelector(".body").innerHTML = html);
 // anything written here, and at this point they are the only thing on screen.
 function gateFail(text) {
   $("age").textContent = "failed";
+  // The boot gate only ever shows on a hard failure — claudex missing, logged out, or the server
+  // dead — so this is the one always-fatal error surface.
+  trackError("load_failure", "gate", text, true);
   gateBody(`<pre class="raw">${esc(text)}</pre><p class="gate-a"><button>Retry</button></p>`);
   const b = gate.querySelector("button");
   // Swapping the body back also deletes this button, which is what stops a second click landing
@@ -384,6 +396,18 @@ async function load(fresh) {
 
     last = d;
     paint();
+    // Refresh the always-on globals and the GA4 user properties from this fresh payload, so every
+    // event fired afterwards carries current state. Both no-op until telemetry is enabled.
+    setGlobals({ active_tab: fromHash(), theme: $("theme-select")?.value || "default", app_version: d.ctx?.app_version });
+    setUserContext(d.ctx, last);
+    // A parse/capture failure on any panel goes to the error stream — once per fetch (not per
+    // re-render), classified from claudex's own error text. The all-panels-fail boot case is
+    // handled by gateFail above instead, so only run this once the gate is down.
+    if (!gate.open) {
+      for (const p of PANELS) {
+        if (d[p] && !d[p].ok) trackError(errorType(d[p].error), p, d[p].error || "unrecognised output");
+      }
+    }
     // PANELS, not Object.values(d): the payload also carries `me`, which is not a panel and is
     // null whenever CLAUDEX_ME is unset. Anything added beside the panels would break this too.
     const age = Math.max(...PANELS.map((k) => d[k]?.age ?? 0));
@@ -406,7 +430,10 @@ async function load(fresh) {
     // inert, because top-layer participation controls painting, not interactivity.
     $("age").textContent = "failed";
     if (gate.open) gateFail(e.message);
-    else toast(e.message, true, "load");
+    else {
+      trackError("load_failure", "load", e.message, true);
+      toast(e.message, true, "load");
+    }
   } finally {
     btn.disabled = false;
   }
@@ -414,7 +441,15 @@ async function load(fresh) {
 
 // ---------- tabs ----------
 // Every panel arrives in one /api/all, so switching tabs is pure show/hide — never a refetch.
+// `activeTab` remembers the current panel so tab_view fires once per real change (carrying where the
+// user came from) and no-op re-selects of the same tab are skipped.
+let activeTab = null;
 function show(name) {
+  if (name !== activeTab) {
+    track(EVENTS.TAB_VIEW, { tab_name: name, from_tab: activeTab ?? "" });
+    setGlobals({ active_tab: name });
+    activeTab = name;
+  }
   for (const p of ALL_TABS) {
     $(p).hidden = p !== name;
     $(`tab-${p}`).setAttribute("aria-selected", String(p === name));
@@ -497,6 +532,9 @@ async function showMember(name, fresh) {
       details.set(name, p);
     }
     shown = details.get(name);
+    // The breakdown came back but the parser did not recognise it — a member-scoped parse failure,
+    // distinct from the fetch failure the catch handles.
+    if (!shown.ok) trackError("parse_error", "member", shown.error || "unrecognised output");
     const d = shown.ok ? shown.data : null;
     $("detail-name").textContent = (d?.marked ? "▶ " : "") + name;
     dlg.querySelector(".plan").textContent = d
@@ -504,6 +542,7 @@ async function showMember(name, fresh) {
       : "";
     fillDetail(shown);
   } catch (err) {
+    trackError("member_error", "member", err.message);
     // A failed REFRESH keeps what is already on screen: those numbers are stale, not wrong, and
     // closing would take away the breakdown someone was reading. A failed OPEN has nothing to keep,
     // so it still closes rather than leave an empty modal in the way of the toast explaining why.
@@ -522,6 +561,7 @@ $("pool").addEventListener("click", (e) => {
   const btn = e.target.closest("button.detail");
   if (!btn) return;
   openName = btn.dataset.name;
+  track(EVENTS.VIEW_MEMBER_DETAILS, { member: openName });
 
   // Open first, fill second: the request can take a second, and a button that does nothing until
   // then reads as broken.
@@ -706,6 +746,7 @@ async function doAction(btn, kind, name) {
   try {
     await fireMutation(kind, name);
     stop();
+    trackMutation(kind, name, "success");
     // Unkeyed on purpose: load() below clears only keyed toasts, so this survives the re-render.
     toast(done);
     await load(true);
@@ -718,10 +759,22 @@ async function doAction(btn, kind, name) {
     btn.disabled = false;
   } catch (err) {
     stop();
+    trackMutation(kind, name, "error");
     toast(err.message, true);
     btn.disabled = false;
     btn.textContent = label;
   }
+}
+
+// One place turns a button `kind` into its analytics event: the KIND_EVENT table gives the event
+// name and the `action` value, and `name` is the target (raw — a coworker/account name, needed to
+// read who borrows from whom). Covers every card/header button mutation, incl. #mine. Playground
+// runs deliberately do NOT come through here — they fire playground_command instead, so command- and
+// button-triggered actions stay distinguishable.
+function trackMutation(kind, name, outcome) {
+  const m = KIND_EVENT[kind];
+  if (!m) return;
+  track(m.event, { action: m.action, target: name ?? "", outcome });
 }
 
 // Matched on data-kind rather than a class: an Allow/Deny button is not a "switch" by any reading,
@@ -777,8 +830,10 @@ function renderPgTree() {
   pgRight.innerHTML = TREE.map((n) => pgRenderNode(n, 0)).join("");
 }
 
-function pgLogStart(cli, durationMs) {
-  const entry = { cmd: cli, status: "running", output: "", secondsLeft: 0 };
+// `cmdType` (read | member_read | mutate) and the start time ride on the entry so pgLogFinish can
+// emit one playground_command event per run without each run function repeating the call.
+function pgLogStart(cli, durationMs, cmdType) {
+  const entry = { cmd: cli, status: "running", output: "", secondsLeft: 0, cmdType, startedAt: Date.now() };
   pgHistory.push(entry);
   entry.stop = countdown(durationMs, (s) => {
     entry.secondsLeft = s;
@@ -791,6 +846,18 @@ function pgLogFinish(entry, ok, output) {
   entry.stop();
   entry.status = ok ? "ok" : "bad";
   entry.output = output;
+  // One event per Playground run, carrying the raw command (so command arguments — incl. names —
+  // are visible for analysis), how it ran, whether it succeeded, and how long it took. This is the
+  // ONLY event a Playground run fires; button-driven mutations go through trackMutation instead, so
+  // the two sources stay distinguishable.
+  track(EVENTS.PLAYGROUND_COMMAND, {
+    command: entry.cmd,
+    command_type: entry.cmdType,
+    outcome: ok ? "success" : "error",
+    duration_ms: Date.now() - entry.startedAt,
+  });
+  // A failed run also lands in the error stream, tagged by the kind of command that failed.
+  if (!ok) trackError("playground_error", "playground:" + (entry.cmdType || "unknown"), output);
   renderPgHistory();
 }
 
@@ -811,7 +878,7 @@ function renderPgHistory() {
 // The three ways a leaf actually runs. Every one of them is a route that already exists for another
 // tab's button — Playground adds no new way to reach claudex beyond the one read route in server.ts.
 async function pgRunRead(node) {
-  const entry = pgLogStart(node.cli, READ_TIMEOUT_MS);
+  const entry = pgLogStart(node.cli, READ_TIMEOUT_MS, "read");
   try {
     const r = await fetch(`/api/playground/read?cmd=${encodeURIComponent(node.cmd)}`);
     const d = await r.json();
@@ -824,7 +891,7 @@ async function pgRunRead(node) {
 
 // Same route showMember() already uses for View Details — always fresh, same as every Playground run.
 async function pgRunMemberRead(node, name) {
-  const entry = pgLogStart(node.cli.replace("{name}", name), READ_TIMEOUT_MS);
+  const entry = pgLogStart(node.cli.replace("{name}", name), READ_TIMEOUT_MS, "member_read");
   try {
     const r = await fetch(`/api/pool/member?name=${encodeURIComponent(name)}&fresh=1`);
     const d = await r.json();
@@ -838,7 +905,7 @@ async function pgRunMemberRead(node, name) {
 // Same ask-then-fire as doAction(), just logged instead of toasted — see fireMutation() above.
 async function pgRunMutation(node, name) {
   if (!(await ask(...ASK[node.mutate](name)))) return;
-  const entry = pgLogStart(node.cli.replace("{name}", name ?? ""), ACTION_TIMEOUT_MS);
+  const entry = pgLogStart(node.cli.replace("{name}", name ?? ""), ACTION_TIMEOUT_MS, "mutate");
   try {
     const d = await fireMutation(node.mutate, name);
     pgLogFinish(entry, true, d.raw?.trim() || "(no output)");
@@ -905,6 +972,7 @@ async function checkForUpdates(auto) {
     const r = await fetch("/api/update/check");
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || "check failed");
+    track(EVENTS.UPDATE_CHECK, { outcome: "success", up_to_date: d.upToDate ? "true" : "false", source: auto ? "auto" : "manual" });
     if (d.upToDate) {
       setUpdateStatus(`up to date · you're on ${d.current}`);
     } else {
@@ -915,6 +983,7 @@ async function checkForUpdates(auto) {
       }
     }
   } catch (err) {
+    track(EVENTS.UPDATE_CHECK, { outcome: "error", source: auto ? "auto" : "manual" });
     setUpdateStatus(auto ? "" : `check failed: ${err.message}`);
     if (!auto) toast(err.message, true); // quiet on the boot check: offline is not an error worth a toast
   } finally {
@@ -939,9 +1008,11 @@ async function fireUpdate() {
     });
     const d = await r.json();
     if (!r.ok || !d.ok) throw new Error(d.error || d.raw || `HTTP ${r.status}`);
+    track(EVENTS.UPDATE_APPLY, { outcome: "success" });
     toast(done);
     setUpdateStatus("restarting…");
   } catch (err) {
+    track(EVENTS.UPDATE_APPLY, { outcome: "error" });
     toast(err.message, true);
     setUpdateStatus(`update failed: ${err.message}`);
   }
@@ -1073,18 +1144,55 @@ function savePrefs() {
 loadPrefs();
 
 // Direct listeners, not delegated: unlike the cards, these elements outlive every innerHTML pass.
-// Wrap paint() so every sort/filter change is persisted automatically.
-$("sort").addEventListener("change", () => { savePrefs(); paint(); });
-$("only5x").addEventListener("change", () => { savePrefs(); paint(); });
+// Wrap paint() so every sort/filter change is persisted automatically. The filter_change events fire
+// only on explicit user change (this is the change listener, not the load-time restore), carrying
+// which control changed and its new value.
+$("sort").addEventListener("change", () => {
+  track(EVENTS.FILTER_CHANGE, { filter_type: "sort", value: $("sort").value || "default" });
+  savePrefs();
+  paint();
+});
+$("only5x").addEventListener("change", () => {
+  track(EVENTS.FILTER_CHANGE, { filter_type: "only5x", value: $("only5x").checked ? "on" : "off" });
+  savePrefs();
+  paint();
+});
 
 $("settings-btn")?.addEventListener("click", () => $("settings").showModal());
 $("settings")?.addEventListener("click", (e) => {
   if (e.target === $("settings")) $("settings").close();
 });
+// Tracks the current theme so a change event can report where it came from. Seeded from the restored
+// pref, updated on each explicit change — load-time restore (setTheme in loadPrefs) fires no event.
+let currentTheme = $("theme-select")?.value || "default";
 $("theme-select")?.addEventListener("change", (e) => {
+  track(EVENTS.THEME_CHANGE, { theme: e.target.value, previous_theme: currentTheme });
+  currentTheme = e.target.value;
   setTheme(e.target.value);
+  setGlobals({ theme: e.target.value });
   savePrefs();
 });
 
+// A browser tab coming back to the foreground, with how long it was hidden — a separate event from
+// page_view so refocus never inflates page-view counts.
+let hiddenSince = 0;
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    hiddenSince = Date.now();
+  } else if (document.visibilityState === "visible" && hiddenSince) {
+    track(EVENTS.APP_FOREGROUND, { hidden_ms: Date.now() - hiddenSince });
+    hiddenSince = 0;
+  }
+});
+
 $("refresh").addEventListener("click", () => load(true));
+
+// Bring telemetry up (no-op unless a Firebase project is configured and enabled), then record the
+// open as a page_view. Fired after init so the very first event is not dropped; deliberately not
+// awaited before load() so analytics never delays the dashboard's own first paint.
+initTelemetry().then(() => {
+  setGlobals({ theme: currentTheme, active_tab: fromHash() });
+  track(EVENTS.PAGE_VIEW, { page_location: location.href, page_title: document.title });
+});
+
 load(false);

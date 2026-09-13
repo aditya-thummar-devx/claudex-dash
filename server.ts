@@ -21,6 +21,8 @@ import type { Capture, CommandKey } from "./src/claudex-dash.ts";
 import { checkForUpdate, applyUpdate } from "./src/update.ts";
 import { sameOrigin } from "./src/guard.ts";
 import { resolveMe, whoAmI } from "./src/me.ts";
+import { clientContext } from "./src/client-context.ts";
+import { DEFAULT_FIREBASE_CONFIG } from "./src/firebase-config.ts";
 import {
   parseUsage, parseList, parseCurrent, parsePoolStatus, parseDoctor, parsePoolMembers,
   parseMemberDetail, parseAccess,
@@ -37,6 +39,36 @@ const PUBLIC_DIR = join(import.meta.dir, "public");
 // every /api/all would put a file read on the hot path for a value that cannot have moved.
 // Finding nobody is an ordinary state: /api/all reports me:null and the page shows no button.
 const ME = whoAmI(process.env.CLAUDEX_ME ?? "");
+
+// Firebase Analytics config. The baseline ships committed in src/firebase-config.ts so every
+// install — including a fresh `curl … bootstrap.sh | bash`, which clones only tracked files and
+// writes no .env — picks it up. Per-machine FIREBASE_* env vars (Bun auto-loads .env) override it
+// field by field. These are the client-side "public" Firebase keys and are safe to hand to the
+// browser; the /api/analytics-config route below returns them. Analytics stays a complete no-op
+// unless a full config is present AND the local kill-switch is not set to "off" — so with the
+// committed defaults blank the feature ships dark and only lights up once real values land in
+// src/firebase-config.ts (or the env).
+//
+// The kill-switch is the LOCAL override; a Remote Config flag (read client-side) is the remote one.
+// "off" is the only value that disables — anything else (unset, "on", "1") leaves analytics on.
+function firebaseConfig() {
+  const d = DEFAULT_FIREBASE_CONFIG;
+  const cfg = {
+    apiKey: process.env.FIREBASE_API_KEY ?? d.apiKey,
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN ?? d.authDomain,
+    projectId: process.env.FIREBASE_PROJECT_ID ?? d.projectId,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET ?? d.storageBucket,
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID ?? d.messagingSenderId,
+    appId: process.env.FIREBASE_APP_ID ?? d.appId,
+    measurementId: process.env.FIREBASE_MEASUREMENT_ID ?? d.measurementId,
+  };
+  // measurementId is what routes events to the GA4 property, so it is required alongside the
+  // identity trio; without any one of these the SDK cannot report and we treat config as absent.
+  const complete = Boolean(cfg.apiKey && cfg.projectId && cfg.appId && cfg.measurementId);
+  return { cfg, complete };
+}
+
+const ANALYTICS_OFF = (process.env.CLAUDEX_DASH_ANALYTICS ?? "").trim().toLowerCase() === "off";
 
 type Panel = { ok: boolean; data: unknown; raw: string; age: number; error?: string };
 
@@ -162,6 +194,29 @@ const config = {
         // Not a panel: it has no raw text of its own and nothing to fall back to. Null whenever
         // CLAUDEX_ME is unset or names nobody claudex knows, which the page reads as "no button".
         me: resolveMe(ME, accounts, members),
+        // The four analytics facts only the server can see (OS user, macOS version, this app's
+        // version, and the identity email). The client turns these into GA4 user properties and
+        // derives the rest (account/pool counts, feature state) from the panels above. Always
+        // present and cheap (memoized) — the browser maps any "" to "unknown". No bearing on the
+        // page's own rendering; a client with analytics disabled simply ignores it.
+        ctx: await clientContext(ME),
+      });
+    }
+
+    // Firebase config + the resolved enablement, fetched once by the client's telemetry layer at
+    // startup. Unguarded like /api/all and /api/update/check: it returns only the public Firebase
+    // web keys (never a server secret), so no CORS headers here either — see the note above. When
+    // config is incomplete or the local kill-switch is set, `enabled` is false and `config` is null,
+    // and the client stays a complete no-op.
+    if (url.pathname === "/api/analytics-config" && req.method === "GET") {
+      const { cfg, complete } = firebaseConfig();
+      const enabled = complete && !ANALYTICS_OFF;
+      return Response.json({
+        enabled,
+        config: enabled ? cfg : null,
+        // Bundled default so the client works before/without a Remote Config fetch; the remote
+        // value, when it arrives, can only turn analytics OFF, never widen what config allows.
+        remoteConfigDefaults: { analytics_enabled: true },
       });
     }
 

@@ -68,3 +68,15 @@ export async function applyUpdate(): Promise<ActionResult> {
   const r = await runGit(["pull", "--ff-only", "origin", "main"], PULL_TIMEOUT_MS);
   return { ok: r.code === 0, raw: r.out };
 }
+
+// The repo's current short HEAD SHA, for the analytics `app_version` param. Best-effort and never
+// throws: a detached/absent git or a slow rev-parse just yields "" (the same defensive posture as
+// decide()'s upToDate default), and the analytics layer treats "" as "unknown".
+export async function currentRevision(): Promise<string> {
+  try {
+    const head = await runGit(["rev-parse", "--short", "HEAD"]);
+    return head.code === 0 ? head.out.trim() : "";
+  } catch {
+    return "";
+  }
+}
